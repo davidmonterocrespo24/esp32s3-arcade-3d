@@ -8,6 +8,7 @@
 #define RENDERING_H
 
 #include <TFT_eSPI.h>
+#include "config.h"
 #include "structs.h"
 
 // ═══════════════════════════════════════════════════════════════
