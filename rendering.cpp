@@ -413,7 +413,7 @@ void drawRoad(float position, float playerX, float playerZdist,
         int h0 = (int)(p0.scale * seg.buildL);
         // Offset AUMENTADO para alejar edificios de la carretera (y del túnel)
         // Antes: p1.w * 1.5 -> Ahora: p1.w * 3.5 (Más espacio)
-        int off1 = p1.w * 3.5; int off0 = p0.w * 3.5;
+        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
         
         // Ancho de edificio AUMENTADO
         // Antes: 50000 -> Ahora: 150000 (3x más ancho)
@@ -460,7 +460,7 @@ void drawRoad(float position, float playerX, float playerZdist,
         int h1 = (int)(p1.scale * seg.buildR);
         int h0 = (int)(p0.scale * seg.buildR);
         // Offset AUMENTADO
-        int off1 = p1.w * 3.5; int off0 = p0.w * 3.5;
+        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
         // Ancho AUMENTADO
         int bw1 = (int)(p1.scale * 150000);
         int bw0 = (int)(p0.scale * 150000);
