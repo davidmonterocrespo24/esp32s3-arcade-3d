@@ -52,8 +52,10 @@ void setup() {
 
   // Crear sprite para double buffering en PSRAM (ahorra ~150KB RAM)
   spr.setColorDepth(16);
-  spr.createSprite(SCR_W, SCR_H);
-  spr.setAttribute(PSRAM_ENABLE, true);
+  spr.setAttribute(PSRAM_ENABLE, true); // Habilitar PSRAM antes de crear
+  if (spr.createSprite(SCR_W, SCR_H) == nullptr) {
+    Serial.println("ERROR: Fallo al crear spr principal!");
+  }
 
   // Inicializar física
   initPhysics();

@@ -30,32 +30,66 @@ int16_t  rClip[DRAW_DIST];
 
 void initBackground() {
   // Crear sprite de fondo en PSRAM (DOBLE de ancho para seamless scrolling)
+  // IMPORTANTE: Habilitar PSRAM _antes_ de crear el sprite
   bgSpr.setColorDepth(16);
-  bgSpr.createSprite(SCR_W * 2, SCR_CY);  // 640x120 (doble ancho)
   bgSpr.setAttribute(PSRAM_ENABLE, true);
-
-  // 1. Dibujar cielo con degradado vertical (en todo el ancho)
-  for (int y = 0; y < SCR_CY; y++) {
-    float t = (float)y / SCR_CY;
-    uint16_t skyCol = lerpCol(rgb(60, 120, 240), rgb(180, 200, 255), t);
-    bgSpr.drawFastHLine(0, y, SCR_W * 2, skyCol);  // Todo el ancho
+  
+  if (bgSpr.createSprite(SCR_W * 2, SCR_CY) == nullptr) {
+    Serial.println("ERROR: Fallo al crear bgSpr en PSRAM!");
+  } else {
+    Serial.println("bgSpr creado en PSRAM correctamente.");
   }
 
-  // 2. Sol ÚNICO en el centro (no se duplica)
-  int sunX = SCR_W;  // Centro del buffer doble
-  int sunY = SCR_CY - 25;
-  bgSpr.fillCircle(sunX, sunY, 25, rgb(255, 200, 50));
-  bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 240, 100));
+  // 1. Dibujar cielo con degradado vertical (en todo el ancho)
+  // Cielo estilo atardecer/ciudad: azul oscuro arriba a naranja/morado abajo
+  for (int y = 0; y < SCR_CY; y++) {
+    float t = (float)y / SCR_CY;
+    uint16_t skyCol = lerpCol(rgb(40, 40, 80), rgb(150, 100, 150), t); // Azul oscuro a morado
+    if (y > SCR_CY * 0.7) { // Última parte más naranja
+       float t2 = (float)(y - SCR_CY * 0.7) / (SCR_CY * 0.3);
+       skyCol = lerpCol(rgb(150, 100, 150), rgb(255, 180, 100), t2);
+    }
+    bgSpr.drawFastHLine(0, y, SCR_W * 2, skyCol);
+  }
 
-  // 3. Montañas procedurales (repetir patrón para seamless)
-  for (int x = 0; x < SCR_W * 2; x++) {
-    // Capa 1: Montañas lejanas (oscuras)
-    int h1 = (int)(sinf(x * 0.03f) * 20.0f + cosf(x * 0.015f) * 15.0f + 35.0f);
-    bgSpr.drawFastVLine(x, SCR_CY - h1, h1, rgb(40, 50, 70));
+  // 2. Sol/Luna (opcional, dejamos sol poniente)
+  int sunX = SCR_W;  
+  int sunY = SCR_CY - 15;
+  bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 100, 50)); // Sol rojizo
+  bgSpr.fillCircle(sunX, sunY, 15, rgb(255, 150, 50));
 
-    // Capa 2: Montañas cercanas (verdes)
-    int h2 = (int)(sinf(x * 0.04f + 2.0f) * 12.0f + cosf(x * 0.08f) * 8.0f + 20.0f);
-    bgSpr.drawFastVLine(x, SCR_CY - h2, h2, rgb(25, 80, 45));
+  // 3. SKYLINE DE CIUDAD (Procedural)
+  // Capa trasera (más oscura, edificios más bajos/lejanos)
+  int x = 0;
+  while (x < SCR_W * 2) {
+      int w = random(10, 30);
+      int h = random(20, 50);
+      uint16_t buildCol = rgb(30, 30, 50); // Gris oscuro azulado
+      bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
+      x += w;
+  }
+
+  // Capa delantera (más detallada, más alta)
+  x = 0;
+  while (x < SCR_W * 2) {
+      int w = random(15, 40);
+      int h = random(30, 80); // Edificios más altos
+      uint16_t buildCol = rgb(20, 20, 40); // Casi negro
+      
+      // Edificio principal
+      bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
+      
+      // Ventanas (patrón simple)
+      if (w > 10 && h > 10) {
+          uint16_t winCol = rgb(80, 80, 100); // Ventanas tenues
+          for (int wy = SCR_CY - h + 5; wy < SCR_CY - 2; wy += 8) {
+              for (int wx = x + 3; wx < x + w - 3; wx += 6) {
+                  if (random(0, 10) > 3) // 70% encendidas
+                      bgSpr.drawPixel(wx, wy, winCol);
+              }
+          }
+      }
+      x += w; 
   }
 }
 

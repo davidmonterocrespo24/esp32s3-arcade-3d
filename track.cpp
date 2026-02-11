@@ -95,34 +95,38 @@ void buildTrack() {
   for (int i = 0; i < TOTAL_SEGS; i++) {
     if (segments[i].tunnel) continue;
 
-    // --- LADO IZQUIERDO (Edificios estrechos y variados) ---
+    // --- LADO IZQUIERDO (Edificios estilo ciudad) ---
     if (buildCounterL <= 0) {
-      // 80% probabilidad de edificio, 20% hueco
-      if (random(0, 10) < 8) {
-        // Altura muy variada para horizonte dentado
-        curBuildL = random(50000, 160000);
-        // Colores urbanos (grises, marrones, azules oscuros)
-        curColL = rgb(random(60, 160), random(60, 140), random(70, 150));
-        // Edificios estrechos (2 a 4 segmentos de ancho)
-        buildCounterL = random(2, 5);
+      // 50% probabilidad de edificio, 50% hueco (Menos juntos: "no tan juntos")
+      if (random(0, 10) < 5) {
+        // Altura MÁXIMA aumentada (Más altos: "mas alto")
+        // Antes: 50000-160000 -> Ahora: 120000-300000 (casi el doble)
+        curBuildL = random(120000, 300000); 
+        
+        // Colores más variados y urbanos
+        curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
+        
+        // Anchura aumentada (Más anchos: "mas ancho")
+        // Antes: 2-5 -> Ahora: 6-15 segmentos
+        buildCounterL = random(6, 15);
       } else {
         curBuildL = 0; // Hueco entre edificios
-        buildCounterL = random(1, 3);
+        buildCounterL = random(3, 8); // Huecos más largos también
       }
     }
     segments[i].buildL = curBuildL;
     segments[i].colorL = curColL;
     buildCounterL--;
 
-    // --- LADO DERECHO (Lógica independiente para variar) ---
+    // --- LADO DERECHO (Lógica independiente) ---
     if (buildCounterR <= 0) {
-      if (random(0, 10) < 8) {
-        curBuildR = random(50000, 160000);
-        curColR = rgb(random(60, 160), random(60, 140), random(70, 150));
-        buildCounterR = random(2, 5);
+      if (random(0, 10) < 5) { // 50% probabilidad
+        curBuildR = random(120000, 300000); // Mucho más altos
+        curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
+        buildCounterR = random(6, 15); // Mucho más anchos
       } else {
         curBuildR = 0;
-        buildCounterR = random(1, 3);
+        buildCounterR = random(3, 8);
       }
     }
     segments[i].buildR = curBuildR;
