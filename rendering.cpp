@@ -492,8 +492,9 @@ void drawRoad(float position, float playerX, float playerZdist,
     if (seg.tunnel) {
       int tw1 = p1.w * 1.8;
       int tw0 = p0.w * 1.8;
-      int th1 = (int)(p1.scale * 80000);
-      int th0 = (int)(p0.scale * 80000);
+      // Altura del túnel AUMENTADA para llegar al horizonte
+      int th1 = (int)(p1.scale * 500000);
+      int th0 = (int)(p0.scale * 500000);
 
       uint16_t wCol = (n % 2 == 0) ? rgb(80, 70, 60) : rgb(70, 60, 50);
       uint16_t rCol = (n % 2 == 0) ? rgb(60, 50, 40) : rgb(50, 40, 30);
@@ -665,90 +666,6 @@ void drawSpeedometer(float speed, float maxSpeed) {
 void drawStartScreen(float time) {
   spr.fillSprite(TFT_BLACK);
 
-  // --- CARRO ROTANDO EN FALSO 3D ---
-  int carCenterX = SCR_CX;
-  int carCenterY = 60;
-  float angle = time * 0.8f; // Rotación suave
-
-  // Calcular posición 3D del carro (vista isométrica)
-  float cosA = cos(angle);
-  float sinA = sin(angle);
-
-  // Dimensiones del carro en 3D
-  float carWidth = 40.0f;
-  float carDepth = 60.0f;
-  float carHeight = 25.0f;
-
-  // Proyección isométrica simplificada
-  // Definir 8 vértices del carro (caja)
-  float vx[8], vy[8], vz[8];
-  float sx[8], sy[8]; // Proyección 2D
-
-  // Base inferior (z=0)
-  vx[0] = -carWidth/2; vy[0] = -carDepth/2; vz[0] = 0;
-  vx[1] =  carWidth/2; vy[1] = -carDepth/2; vz[1] = 0;
-  vx[2] =  carWidth/2; vy[2] =  carDepth/2; vz[2] = 0;
-  vx[3] = -carWidth/2; vy[3] =  carDepth/2; vz[3] = 0;
-
-  // Techo superior (z=carHeight)
-  vx[4] = -carWidth/2; vy[4] = -carDepth/2; vz[4] = carHeight;
-  vx[5] =  carWidth/2; vy[5] = -carDepth/2; vz[5] = carHeight;
-  vx[6] =  carWidth/2; vy[6] =  carDepth/2; vz[6] = carHeight;
-  vx[7] = -carWidth/2; vy[7] =  carDepth/2; vz[7] = carHeight;
-
-  // Rotar y proyectar cada vértice
-  for (int i = 0; i < 8; i++) {
-    // Rotación en Y
-    float rx = vx[i] * cosA + vy[i] * sinA;
-    float ry = -vx[i] * sinA + vy[i] * cosA;
-    float rz = vz[i];
-
-    // Proyección isométrica (sin perspectiva)
-    sx[i] = carCenterX + rx * 0.8f;
-    sy[i] = carCenterY - rz + ry * 0.4f;
-  }
-
-  // Dibujar caras del carro (solo las visibles según el ángulo)
-  uint16_t bodyCol = rgb(220, 30, 30);    // Rojo brillante
-  uint16_t darkCol = rgb(150, 20, 20);    // Rojo oscuro
-  uint16_t roofCol = rgb(180, 25, 25);    // Rojo medio
-  uint16_t windowCol = rgb(40, 60, 100);  // Azul oscuro (ventanas)
-
-  // Determinar qué caras son visibles
-  float viewAngle = fmod(angle, 2 * PI);
-  if (viewAngle < 0) viewAngle += 2 * PI;
-
-  // Cara frontal (visible si miramos desde adelante)
-  if (viewAngle > PI * 0.25f && viewAngle < PI * 0.75f) {
-    drawQuad(sx[0], sy[0], sx[1], sy[1], sx[5], sy[5], sx[4], sy[4], bodyCol);
-  }
-
-  // Cara trasera
-  if (viewAngle > PI * 1.25f && viewAngle < PI * 1.75f) {
-    drawQuad(sx[3], sy[3], sx[2], sy[2], sx[6], sy[6], sx[7], sy[7], darkCol);
-  }
-
-  // Cara izquierda
-  if (viewAngle < PI * 0.5f || viewAngle > PI * 1.5f) {
-    drawQuad(sx[0], sy[0], sx[3], sy[3], sx[7], sy[7], sx[4], sy[4], darkCol);
-  }
-
-  // Cara derecha
-  if (viewAngle > PI * 0.5f && viewAngle < PI * 1.5f) {
-    drawQuad(sx[1], sy[1], sx[2], sy[2], sx[6], sy[6], sx[5], sy[5], bodyCol);
-  }
-
-  // Techo (siempre visible desde arriba)
-  drawQuad(sx[4], sy[4], sx[5], sy[5], sx[6], sy[6], sx[7], sy[7], roofCol);
-
-  // Ventanas en el techo (simplificadas)
-  int wx1 = (sx[4] + sx[5]) / 2 - 8;
-  int wy1 = (sy[4] + sy[5]) / 2 + 2;
-  spr.fillRect(wx1, wy1, 16, 8, windowCol);
-
-  // Sombra debajo del carro
-  spr.fillEllipse(carCenterX, carCenterY + 35, 25, 8, rgb(20, 20, 20));
-
   // --- TEXTOS DE LA PANTALLA ---
   spr.fillRect(0, 100, SCR_W, 3, TFT_RED);
   spr.fillRect(0, 105, SCR_W, 3, TFT_WHITE);
@@ -769,12 +686,81 @@ void drawStartScreen(float time) {
   spr.print("LEFT / RIGHT buttons to steer");
   spr.setCursor(30, 185);
   spr.print("Car accelerates automatically");
-  spr.setCursor(30, 200);
-  spr.print("Stay on road! Avoid traffic!");
 
-  spr.setTextColor(TFT_CYAN);
-  spr.setCursor(25, 218);
-  spr.print("Hills + Curves + Fog + Traffic");
+  // --- SOMBRA (Dibuja el suelo debajo del coche) ---
+  int carCenterX = SCR_CX;
+  int carCenterY = 85;
+  spr.fillEllipse(carCenterX, carCenterY + 40, 55, 18, rgb(15, 15, 15));
+
+  // --- MOTOR 3D REAL ---
+  float angle = time * 1.5f; // Velocidad de giro
+  float cosA = cos(angle);
+  float sinA = sin(angle);
+
+  // Esculpimos el coche: 16 Vértices {X (Ancho), Y (Alto), Z (Largo)}
+  float verts[16][3] = {
+    // --- CHASIS INFERIOR (0-7) ---
+    {-22, 0, -48}, { 22, 0, -48}, { 22, 0,  48}, {-22, 0,  48}, // 0-3: Base pegada al piso
+    {-22, 8, -48}, { 22, 8, -48}, { 24, 14, 48}, {-24, 14, 48}, // 4-7: Capó inclinado hacia abajo y maletero
+
+    // --- CABINA Y VIDRIOS (8-15) ---
+    {-18, 10, -15}, { 18, 10, -15}, { 20, 14, 25}, {-20, 14, 25}, // 8-11: Base de los vidrios
+    {-14, 24,  0},  { 14, 24,  0},  { 14, 22, 15}, {-14, 22, 15}  // 12-15: Techo de la cabina
+  };
+
+  float sx[16], sy[16];
+
+  // Matemáticas de Proyección
+  for (int i = 0; i < 16; i++) {
+    // 1. Rotación sobre el eje Y (Giro del auto)
+    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
+    float ry = verts[i][1];
+    float rz = verts[i][0] * sinA + verts[i][2] * cosA;
+
+    // 2. Inclinación de la cámara (Mirar ligeramente desde arriba)
+    float pitch = 0.4f; 
+    float camY = ry * cos(pitch) - rz * sin(pitch);
+    float camZ = ry * sin(pitch) + rz * cos(pitch);
+
+    // 3. Alejar el objeto y aplicar la división de perspectiva 
+    camZ += 150.0f;
+    float fov = 160.0f;
+    
+    // Proyección final al monitor 2D
+    sx[i] = carCenterX + (rx * fov) / camZ;
+    sy[i] = carCenterY - (camY * fov) / camZ; 
+  }
+
+  // --- LÓGICA DE DIBUJADO (CULLING) ---
+  // Calcula el producto cruzado. Si los vértices giran en sentido horario en la pantalla, la cara es visible.
+  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t col) {
+    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
+    if (cross > 0) { 
+      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], col);
+    }
+  };
+
+  // Paleta de colores para el sombreado falso
+  uint16_t hoodRed  = rgb(255, 60, 60);  // Rojo iluminado (Capó y Techo)
+  uint16_t bodyRed  = rgb(210, 30, 30);  // Rojo lateral
+  uint16_t darkRed  = rgb(140, 20, 20);  // Rojo oscuro (Atrás)
+  uint16_t glassCol = rgb(80, 180, 255); // Azul cielo (Parabrisas)
+  uint16_t grillCol = rgb(30, 30, 30);   // Gris oscuro (Parrilla y vidrio trasero)
+
+  // 1. Dibujamos el cuerpo principal primero
+  drawFace(0, 1, 2, 3, darkRed);  // Base del chasis
+  drawFace(7, 4, 0, 3, bodyRed);  // Lateral Izquierdo
+  drawFace(5, 6, 2, 1, bodyRed);  // Lateral Derecho
+  drawFace(6, 7, 3, 2, darkRed);  // Parte Trasera
+  drawFace(4, 5, 1, 0, grillCol); // Frontal (Parrilla oscura)
+  drawFace(7, 6, 5, 4, hoodRed);  // Capó y maletero
+
+  // 2. Dibujamos la cabina encima (El orden garantiza que no haya glitches)
+  drawFace(15, 12, 8, 11, bodyRed);   // Puerta izquierda
+  drawFace(13, 14, 10, 9, bodyRed);   // Puerta derecha
+  drawFace(14, 15, 11, 10, grillCol); // Vidrio trasero
+  drawFace(12, 13, 9, 8, glassCol);   // Parabrisas frontal azul
+  drawFace(15, 14, 13, 12, hoodRed);  // Techo rojo
 
   spr.pushSprite(0, 0);
 }

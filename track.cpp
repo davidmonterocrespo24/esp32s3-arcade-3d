@@ -66,15 +66,15 @@ void buildTrack() {
 
   // Circuito variado con curvas en ambos sentidos
   addRoad(25, 25, 25, 0, 0);       // Recta de salida
-  addRoad(40, 40, 40, -3.0, 0);    // Curva IZQUIERDA suave
+  addRoad(40, 40, 40,  3.0, 0);    // Curva DERECHA suave (Inicio)
   addRoad(30, 30, 30,  0, 20);     // Recta + colina
-  addRoad(50, 50, 50,  4.0, 0);    // Curva DERECHA fuerte
+  addRoad(50, 50, 50, -4.0, 0);    // Curva IZQUIERDA fuerte
   addRoad(20, 20, 20,  0, -30);    // Recta + bajada
-  addRoad(40, 40, 40,  2.5, 10);   // Curva DERECHA + subida
-  addRoad(30, 30, 30, -2.0, 0);    // Curva IZQUIERDA media
+  addRoad(40, 40, 40, -2.5, 10);   // Curva IZQUIERDA + subida
+  addRoad(30, 30, 30,  2.0, 0);    // Curva DERECHA media
   addRoad(25, 25, 25,  0, -15);    // Recta plana
-  addRoad(45, 45, 45, -3.5, -20);  // Curva IZQUIERDA + bajada
-  addRoad(35, 35, 35,  3.0, 25);   // Curva DERECHA + colina
+  addRoad(45, 45, 45,  3.5, -20);  // Curva DERECHA + bajada
+  addRoad(35, 35, 35, -3.0, 25);   // Curva IZQUIERDA + colina
 
   // Rellenar hasta TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0);
