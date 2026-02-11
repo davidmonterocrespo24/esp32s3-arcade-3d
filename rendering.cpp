@@ -28,6 +28,8 @@ int16_t  rClip[DRAW_DIST];
 //  IMPLEMENTACIÓN DE FUNCIONES
 // ═══════════════════════════════════════════════════════════════
 
+bool bgCreated = false;
+
 void initBackground() {
   // Crear sprite de fondo en PSRAM (DOBLE de ancho para seamless scrolling)
   // IMPORTANTE: Habilitar PSRAM _antes_ de crear el sprite
@@ -36,8 +38,10 @@ void initBackground() {
   
   if (bgSpr.createSprite(SCR_W * 2, SCR_CY) == nullptr) {
     Serial.println("ERROR: Fallo al crear bgSpr en PSRAM!");
+    bgCreated = false;
   } else {
     Serial.println("bgSpr creado en PSRAM correctamente.");
+    bgCreated = true;
   }
 
   // 1. Dibujar cielo con degradado vertical (en todo el ancho)
@@ -49,14 +53,16 @@ void initBackground() {
        float t2 = (float)(y - SCR_CY * 0.7) / (SCR_CY * 0.3);
        skyCol = lerpCol(rgb(150, 100, 150), rgb(255, 180, 100), t2);
     }
-    bgSpr.drawFastHLine(0, y, SCR_W * 2, skyCol);
+    if (bgCreated) bgSpr.drawFastHLine(0, y, SCR_W * 2, skyCol);
   }
 
   // 2. Sol/Luna (opcional, dejamos sol poniente)
   int sunX = SCR_W;  
   int sunY = SCR_CY - 15;
-  bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 100, 50)); // Sol rojizo
-  bgSpr.fillCircle(sunX, sunY, 15, rgb(255, 150, 50));
+  if (bgCreated) {
+    bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 100, 50)); // Sol rojizo
+    bgSpr.fillCircle(sunX, sunY, 15, rgb(255, 150, 50));
+  }
 
   // 3. SKYLINE DE CIUDAD (Procedural)
   // Capa trasera (más oscura, edificios más bajos/lejanos)
@@ -65,7 +71,7 @@ void initBackground() {
       int w = random(10, 30);
       int h = random(20, 50);
       uint16_t buildCol = rgb(30, 30, 50); // Gris oscuro azulado
-      bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
+      if (bgCreated) bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
       x += w;
   }
 
@@ -77,7 +83,7 @@ void initBackground() {
       uint16_t buildCol = rgb(20, 20, 40); // Casi negro
       
       // Edificio principal
-      bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
+      if (bgCreated) bgSpr.fillRect(x, SCR_CY - h, w, h, buildCol);
       
       // Ventanas (patrón simple)
       if (w > 10 && h > 10) {
@@ -85,7 +91,7 @@ void initBackground() {
           for (int wy = SCR_CY - h + 5; wy < SCR_CY - 2; wy += 8) {
               for (int wx = x + 3; wx < x + w - 3; wx += 6) {
                   if (random(0, 10) > 3) // 70% encendidas
-                      bgSpr.drawPixel(wx, wy, winCol);
+                      if (bgCreated) bgSpr.drawPixel(wx, wy, winCol);
               }
           }
       }
@@ -197,15 +203,26 @@ void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) 
     return;
   }
 
-  // --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
-  // Calculamos desplazamiento X con wrap-around sobre buffer doble (640px)
-  int bgX = (int)skyOffset % (SCR_W * 2);
-  while (bgX < 0) bgX += (SCR_W * 2); // Asegurar positivo
-
-  // Dibujamos el fondo DOS VECES para seamless scrolling
-  // El buffer tiene 640px de ancho, así que el sol (en x=320) solo se ve una vez en pantalla (320px)
-  bgSpr.pushToSprite(&spr, -bgX, 0);
-  bgSpr.pushToSprite(&spr, (SCR_W * 2) - bgX, 0);
+// --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
+  
+  // Fallback si la PSRAM falló
+  if (!bgCreated) {
+    // Dibujar cielo plano simple para evitar fondo negro/basura
+    uint16_t fallbackTop = rgb(40, 40, 80);
+    uint16_t fallbackBot = rgb(150, 100, 150);
+    // Degradado manual simple (rectangulos)
+    spr.fillRect(0, 0, SCR_W, SCR_CY/2, fallbackTop);
+    spr.fillRect(0, SCR_CY/2, SCR_W, SCR_CY/2, fallbackBot);
+  } else {
+    // Calculamos desplazamiento X con wrap-around sobre buffer doble (640px)
+    int bgX = (int)skyOffset % (SCR_W * 2);
+    while (bgX < 0) bgX += (SCR_W * 2); // Asegurar positivo
+  
+    // Dibujamos el fondo DOS VECES para seamless scrolling
+    // El buffer tiene 640px de ancho, así que el sol (en x=320) solo se ve una vez en pantalla (320px)
+    bgSpr.pushToSprite(&spr, -bgX, 0);
+    bgSpr.pushToSprite(&spr, (SCR_W * 2) - bgX, 0);
+  }
 
   // Estrellas por la noche (opcional, sobre el parallax)
   if (timeOfDay == 2) {
@@ -394,26 +411,28 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (seg.buildL > 0) {
         int h1 = (int)(p1.scale * seg.buildL);
         int h0 = (int)(p0.scale * seg.buildL);
-        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
-        int bw1 = (int)(p1.scale * 50000);
-        int bw0 = (int)(p0.scale * 50000);
+        // Offset AUMENTADO para alejar edificios de la carretera (y del túnel)
+        // Antes: p1.w * 1.5 -> Ahora: p1.w * 3.5 (Más espacio)
+        int off1 = p1.w * 3.5; int off0 = p0.w * 3.5;
+        
+        // Ancho de edificio AUMENTADO
+        // Antes: 50000 -> Ahora: 150000 (3x más ancho)
+        int bw1 = (int)(p1.scale * 150000);
+        int bw0 = (int)(p0.scale * 150000);
 
         // 1. Pared lateral (oscurecida)
         drawQuad(p0.x - off0, p0.y, p1.x - off1, p1.y,
                  p1.x - off1, p1.y - h1, p0.x - off0, p0.y - h0,
                  darkenCol(seg.colorL, 0.6));
 
-        // >>> NUEVO: Líneas de ventanas/pisos <<<
-        int numFloors = h0 / 25; // Una línea cada 25 pixels
-        if (numFloors > 1 && numFloors < 20) { // Evitar exceso lejos
-          // Alternar luz de ventanas según segmento
+        // Ventanas
+        int numFloors = h0 / 25;
+        if (numFloors > 1 && numFloors < 20) {
           uint16_t winCol = (sIdx % 3 == 0) ? rgb(220, 220, 180) : rgb(60, 60, 80);
-
           for (int fl = 1; fl < numFloors; fl++) {
             float t = (float)fl / numFloors;
-            int wy0 = p0.y - (int)(h0 * t);  // Y cercano
-            int wy1 = p1.y - (int)(h1 * t);  // Y lejano
-            // Línea que sigue la perspectiva
+            int wy0 = p0.y - (int)(h0 * t);
+            int wy1 = p1.y - (int)(h1 * t);
             spr.drawLine(p0.x - off0, wy0, p1.x - off1, wy1, winCol);
           }
         }
@@ -424,7 +443,8 @@ void drawRoad(float position, float playerX, float playerZdist,
                  darkenCol(seg.colorL, 0.85));
 
         // 3. Fachada frontal (al inicio del edificio)
-        if (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) {
+        // IMPORTANTE: No dibujar fachada si estamos al lado de un túnel para evitar clipping
+        if ((prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel) {
           drawQuad(p0.x - off0, p0.y, p0.x - off0 - bw0, p0.y,
                    p0.x - off0 - bw0, p0.y - h0, p0.x - off0, p0.y - h0,
                    seg.colorL);
@@ -439,20 +459,21 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (seg.buildR > 0) {
         int h1 = (int)(p1.scale * seg.buildR);
         int h0 = (int)(p0.scale * seg.buildR);
-        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
-        int bw1 = (int)(p1.scale * 50000);
-        int bw0 = (int)(p0.scale * 50000);
+        // Offset AUMENTADO
+        int off1 = p1.w * 3.5; int off0 = p0.w * 3.5;
+        // Ancho AUMENTADO
+        int bw1 = (int)(p1.scale * 150000);
+        int bw0 = (int)(p0.scale * 150000);
 
         // 1. Pared lateral derecha
         drawQuad(p0.x + off0, p0.y, p1.x + off1, p1.y,
                  p1.x + off1, p1.y - h1, p0.x + off0, p0.y - h0,
                  darkenCol(seg.colorR, 0.6));
 
-        // >>> NUEVO: Ventanas derecha <<<
+        // Ventanas derecha
         int numFloors = h0 / 25;
         if (numFloors > 1 && numFloors < 20) {
           uint16_t winCol = (sIdx % 3 == 1) ? rgb(220, 220, 180) : rgb(60, 60, 80);
-
           for (int fl = 1; fl < numFloors; fl++) {
             float t = (float)fl / numFloors;
             int wy0 = p0.y - (int)(h0 * t);
@@ -467,7 +488,7 @@ void drawRoad(float position, float playerX, float playerZdist,
                  darkenCol(seg.colorR, 0.85));
 
         // 3. Fachada frontal derecha
-        if (prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) {
+        if ((prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) && !prevSeg.tunnel) {
           drawQuad(p0.x + off0, p0.y, p0.x + off0 + bw0, p0.y,
                    p0.x + off0 + bw0, p0.y - h0, p0.x + off0, p0.y - h0,
                    seg.colorR);

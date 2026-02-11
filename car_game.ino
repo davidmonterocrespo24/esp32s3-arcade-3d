@@ -60,6 +60,10 @@ void setup() {
   // Inicializar física
   initPhysics();
 
+  // DEBUG DE PSRAM
+  Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());
+  Serial.print("Free PSRAM:  "); Serial.println(ESP.getFreePsram());
+
   // Inicializar colores
   initColors(timeOfDay);
 
