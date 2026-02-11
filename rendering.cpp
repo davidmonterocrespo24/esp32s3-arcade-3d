@@ -168,8 +168,10 @@ void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) 
   int bgX = (int)skyOffset % (SCR_W * 2);
   while (bgX < 0) bgX += (SCR_W * 2); // Asegurar positivo
 
-  // Dibujamos una ventana deslizante del buffer doble (sin duplicados)
-  bgSpr.pushToSprite(&spr, -bgX, 0, SCR_W, SCR_CY);
+  // Dibujamos el fondo DOS VECES para seamless scrolling
+  // El buffer tiene 640px de ancho, así que el sol (en x=320) solo se ve una vez en pantalla (320px)
+  bgSpr.pushToSprite(&spr, -bgX, 0);
+  bgSpr.pushToSprite(&spr, (SCR_W * 2) - bgX, 0);
 
   // Estrellas por la noche (opcional, sobre el parallax)
   if (timeOfDay == 2) {
