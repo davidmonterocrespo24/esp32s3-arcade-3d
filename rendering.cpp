@@ -242,6 +242,116 @@ void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, ui
   spr.fillTriangle(x1, y1, x3, y3, x4, y4, c);
 }
 
+void drawBuilding(RenderPt& p0, RenderPt& p1, int heightVal, uint16_t baseCol, int sIdx, bool isLeft, bool showFront) {
+  int h1 = (int)(p1.scale * heightVal);
+  int h0 = (int)(p0.scale * heightVal);
+  // Ancho del edificio (150000 = ancho, validado por usuario)
+  int bw1 = (int)(p1.scale * 150000);
+  int bw0 = (int)(p0.scale * 150000);
+  
+  // Offset desde la carretera (1.5x validado por usuario)
+  int off1 = p1.w * 1.5; 
+  int off0 = p0.w * 1.5;
+  
+  // Coordenadas base (izq o derecha)
+  // Si es izquierda: restamos offset. Si es derecha: sumamos.
+  int x0_side = isLeft ? (p0.x - off0) : (p0.x + off0);
+  int x1_side = isLeft ? (p1.x - off1) : (p1.x + off1);
+  
+  int x0_outer = isLeft ? (x0_side - bw0) : (x0_side + bw0);
+  int x1_outer = isLeft ? (x1_side - bw1) : (x1_side + bw1);
+
+  // 1. PARED LATERAL (La que da a la carretera)
+  // Oscurecer un poco para dar volumen
+  uint16_t sideCol = darkenCol(baseCol, 0.6);
+  drawQuad(x0_side, p0.y, x1_side, p1.y,
+           x1_side, p1.y - h1, x0_side, p0.y - h0, sideCol);
+
+  // 2. DETALLES / VENTANAS (Según Estilo)
+  int style = sIdx % 6; 
+  int numFloors = h0 / 25; // Pisos aprox
+
+  if (numFloors > 1 && numFloors < 30) {
+     if (style == 0) { // ESTILO 0: STANDARD (Oficinas)
+       uint16_t winCol = rgb(220, 220, 180); // Luz cálida
+       for (int fl = 1; fl < numFloors; fl++) {
+         float t = (float)fl / numFloors;
+         int wy0 = p0.y - (int)(h0 * t);
+         int wy1 = p1.y - (int)(h1 * t);
+         // Líneas horizontales simples
+         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
+       }
+     }
+     else if (style == 1) { // ESTILO 1: TORRE DE CRISTAL (Azulada)
+       uint16_t glassCol = rgb(100, 200, 255);
+       // Líneas verticales reflejantes
+       int midX0 = (x0_side + x0_outer) / 2; // (Aprox, solo dibujamos en la cara lateral por ahora)
+       spr.drawLine(x0_side, p0.y - h0/2, x1_side, p1.y - h1/2, glassCol);
+       // Refuerzo borde
+       spr.drawLine(x0_side, p0.y - h0, x1_side, p1.y - h1, TFT_WHITE);
+     }
+     else if (style == 2) { // ESTILO 2: RESIDENCIAL (Ladrillo/Naranja)
+       uint16_t winCol = TFT_YELLOW;
+       // Ventanas cuadradas dispersas
+       for (int fl = 1; fl < numFloors; fl++) {
+         if ((fl + sIdx) % 2 == 0) continue; // Alternar pisos
+         float t = (float)fl / numFloors;
+         int wy0 = p0.y - (int)(h0 * t);
+         int wy1 = p1.y - (int)(h1 * t);
+         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
+       }
+     }
+     else if (style == 3) { // ESTILO 3: MODERNO (Blanco/Negro)
+       uint16_t winCol = TFT_WHITE;
+       // Pocas líneas, muy finas (minimalista)
+       if (numFloors > 5) {
+         float t = 0.8; 
+         int wy0 = p0.y - (int)(h0 * t);
+         int wy1 = p1.y - (int)(h1 * t);
+         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
+       }
+     }
+     else if (style == 4) { // ESTILO 4: INDUSTRIAL (Oscuro)
+        // Franjas de precaución o luces rojas
+        if (numFloors > 2) {
+           float t = 0.9; // Luz de obstrucción aerea
+           int wy0 = p0.y - (int)(h0 * t);
+           int wy1 = p1.y - (int)(h1 * t);
+           spr.drawCircle((x0_side+x1_side)/2, (wy0+wy1)/2, 2, TFT_RED);
+        }
+     }
+     else if (style == 5) { // ESTILO 5: NOCTURNO / NEON
+        uint16_t neonCol = (sIdx % 2 == 0) ? rgb(255, 0, 255) : rgb(0, 255, 255);
+        // Borde neón vertical
+        spr.drawLine(x0_side, p0.y, x0_side, p0.y - h0, neonCol);
+     }
+  }
+
+  // 3. TECHO
+  int roX1 = isLeft ? (x1_outer) : (x1_side); // Esquinas exteriores lejanas
+  int roX0 = isLeft ? (x0_outer) : (x0_side); // Esquinas exteriores cercanas
+  // Ajuste coord techo para quad
+  drawQuad(x0_side, p0.y - h0, x1_side, p1.y - h1,
+           x1_outer, p1.y - h1, x0_outer, p0.y - h0,
+           darkenCol(baseCol, 0.85));
+
+  // 4. FACHADA FRONTAL (Solo si es visible y segura)
+  if (showFront) {
+    drawQuad(x0_side, p0.y, x0_outer, p0.y,
+             x0_outer, p0.y - h0, x0_side, p0.y - h0,
+             baseCol);
+    
+    // Detalle puerta/entrada en fachada estándar
+    if (h0 > 15 && bw0 > 10) {
+       uint16_t doorCol = rgb(20, 20, 20);
+       int doorH = h0 / 5;
+       int doorW = bw0 / 3;
+       int doorX = isLeft ? (x0_side - bw0/2 - doorW/2) : (x0_side + bw0/2 - doorW/2);
+       spr.fillRect(doorX, p0.y - doorH, doorW, doorH, doorCol);
+    }
+  }
+}
+
 void drawRoad(float position, float playerX, float playerZdist,
               float cameraDepth, int timeOfDay) {
   int baseIdx = findSegIdx(position);
@@ -409,93 +519,14 @@ void drawRoad(float position, float playerX, float playerZdist,
     if (!seg.tunnel) {
       // --- EDIFICIO IZQUIERDO ---
       if (seg.buildL > 0) {
-        int h1 = (int)(p1.scale * seg.buildL);
-        int h0 = (int)(p0.scale * seg.buildL);
-        // Offset AUMENTADO para alejar edificios de la carretera (y del túnel)
-        // Antes: p1.w * 1.5 -> Ahora: p1.w * 3.5 (Más espacio)
-        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
-        
-        // Ancho de edificio AUMENTADO
-        // Antes: 50000 -> Ahora: 150000 (3x más ancho)
-        int bw1 = (int)(p1.scale * 150000);
-        int bw0 = (int)(p0.scale * 150000);
-
-        // 1. Pared lateral (oscurecida)
-        drawQuad(p0.x - off0, p0.y, p1.x - off1, p1.y,
-                 p1.x - off1, p1.y - h1, p0.x - off0, p0.y - h0,
-                 darkenCol(seg.colorL, 0.6));
-
-        // Ventanas
-        int numFloors = h0 / 25;
-        if (numFloors > 1 && numFloors < 20) {
-          uint16_t winCol = (sIdx % 3 == 0) ? rgb(220, 220, 180) : rgb(60, 60, 80);
-          for (int fl = 1; fl < numFloors; fl++) {
-            float t = (float)fl / numFloors;
-            int wy0 = p0.y - (int)(h0 * t);
-            int wy1 = p1.y - (int)(h1 * t);
-            spr.drawLine(p0.x - off0, wy0, p1.x - off1, wy1, winCol);
-          }
-        }
-
-        // 2. Techo (más oscuro)
-        drawQuad(p0.x - off0, p0.y - h0, p1.x - off1, p1.y - h1,
-                 p1.x - off1 - bw1, p1.y - h1, p0.x - off0 - bw0, p0.y - h0,
-                 darkenCol(seg.colorL, 0.85));
-
-        // 3. Fachada frontal (al inicio del edificio)
-        // IMPORTANTE: No dibujar fachada si estamos al lado de un túnel para evitar clipping
-        if ((prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel) {
-          drawQuad(p0.x - off0, p0.y, p0.x - off0 - bw0, p0.y,
-                   p0.x - off0 - bw0, p0.y - h0, p0.x - off0, p0.y - h0,
-                   seg.colorL);
-          // Ventana iluminada en fachada
-          if (h0 > 12 && bw0 > 6)
-            spr.fillRect(p0.x - off0 - bw0 * 3 / 4, p0.y - h0 * 5 / 6,
-                         bw0 / 2, h0 / 4, rgb(255, 255, 180));
-        }
+         bool showFront = (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel;
+         drawBuilding(p0, p1, seg.buildL, seg.colorL, sIdx, true, showFront);
       }
-
+      
       // --- EDIFICIO DERECHO ---
       if (seg.buildR > 0) {
-        int h1 = (int)(p1.scale * seg.buildR);
-        int h0 = (int)(p0.scale * seg.buildR);
-        // Offset AUMENTADO
-        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
-        // Ancho AUMENTADO
-        int bw1 = (int)(p1.scale * 150000);
-        int bw0 = (int)(p0.scale * 150000);
-
-        // 1. Pared lateral derecha
-        drawQuad(p0.x + off0, p0.y, p1.x + off1, p1.y,
-                 p1.x + off1, p1.y - h1, p0.x + off0, p0.y - h0,
-                 darkenCol(seg.colorR, 0.6));
-
-        // Ventanas derecha
-        int numFloors = h0 / 25;
-        if (numFloors > 1 && numFloors < 20) {
-          uint16_t winCol = (sIdx % 3 == 1) ? rgb(220, 220, 180) : rgb(60, 60, 80);
-          for (int fl = 1; fl < numFloors; fl++) {
-            float t = (float)fl / numFloors;
-            int wy0 = p0.y - (int)(h0 * t);
-            int wy1 = p1.y - (int)(h1 * t);
-            spr.drawLine(p0.x + off0, wy0, p1.x + off1, wy1, winCol);
-          }
-        }
-
-        // 2. Techo derecho
-        drawQuad(p0.x + off0, p0.y - h0, p1.x + off1, p1.y - h1,
-                 p1.x + off1 + bw1, p1.y - h1, p0.x + off0 + bw0, p0.y - h0,
-                 darkenCol(seg.colorR, 0.85));
-
-        // 3. Fachada frontal derecha
-        if ((prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) && !prevSeg.tunnel) {
-          drawQuad(p0.x + off0, p0.y, p0.x + off0 + bw0, p0.y,
-                   p0.x + off0 + bw0, p0.y - h0, p0.x + off0, p0.y - h0,
-                   seg.colorR);
-          if (h0 > 12 && bw0 > 6)
-            spr.fillRect(p0.x + off0 + bw0 / 4, p0.y - h0 * 5 / 6,
-                         bw0 / 2, h0 / 4, rgb(255, 255, 180));
-        }
+         bool showFront = (prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) && !prevSeg.tunnel;
+         drawBuilding(p0, p1, seg.buildR, seg.colorR, sIdx, false, showFront);
       }
     }
 
@@ -631,39 +662,119 @@ void drawSpeedometer(float speed, float maxSpeed) {
   spr.print(kmh);
 }
 
-void drawStartScreen() {
+void drawStartScreen(float time) {
   spr.fillSprite(TFT_BLACK);
-  spr.fillRect(0, 30, SCR_W, 3, TFT_RED);
-  spr.fillRect(0, 35, SCR_W, 3, TFT_WHITE);
-  spr.fillRect(0, 115, SCR_W, 3, TFT_WHITE);
-  spr.fillRect(0, 120, SCR_W, 3, TFT_RED);
+
+  // --- CARRO ROTANDO EN FALSO 3D ---
+  int carCenterX = SCR_CX;
+  int carCenterY = 60;
+  float angle = time * 0.8f; // Rotación suave
+
+  // Calcular posición 3D del carro (vista isométrica)
+  float cosA = cos(angle);
+  float sinA = sin(angle);
+
+  // Dimensiones del carro en 3D
+  float carWidth = 40.0f;
+  float carDepth = 60.0f;
+  float carHeight = 25.0f;
+
+  // Proyección isométrica simplificada
+  // Definir 8 vértices del carro (caja)
+  float vx[8], vy[8], vz[8];
+  float sx[8], sy[8]; // Proyección 2D
+
+  // Base inferior (z=0)
+  vx[0] = -carWidth/2; vy[0] = -carDepth/2; vz[0] = 0;
+  vx[1] =  carWidth/2; vy[1] = -carDepth/2; vz[1] = 0;
+  vx[2] =  carWidth/2; vy[2] =  carDepth/2; vz[2] = 0;
+  vx[3] = -carWidth/2; vy[3] =  carDepth/2; vz[3] = 0;
+
+  // Techo superior (z=carHeight)
+  vx[4] = -carWidth/2; vy[4] = -carDepth/2; vz[4] = carHeight;
+  vx[5] =  carWidth/2; vy[5] = -carDepth/2; vz[5] = carHeight;
+  vx[6] =  carWidth/2; vy[6] =  carDepth/2; vz[6] = carHeight;
+  vx[7] = -carWidth/2; vy[7] =  carDepth/2; vz[7] = carHeight;
+
+  // Rotar y proyectar cada vértice
+  for (int i = 0; i < 8; i++) {
+    // Rotación en Y
+    float rx = vx[i] * cosA + vy[i] * sinA;
+    float ry = -vx[i] * sinA + vy[i] * cosA;
+    float rz = vz[i];
+
+    // Proyección isométrica (sin perspectiva)
+    sx[i] = carCenterX + rx * 0.8f;
+    sy[i] = carCenterY - rz + ry * 0.4f;
+  }
+
+  // Dibujar caras del carro (solo las visibles según el ángulo)
+  uint16_t bodyCol = rgb(220, 30, 30);    // Rojo brillante
+  uint16_t darkCol = rgb(150, 20, 20);    // Rojo oscuro
+  uint16_t roofCol = rgb(180, 25, 25);    // Rojo medio
+  uint16_t windowCol = rgb(40, 60, 100);  // Azul oscuro (ventanas)
+
+  // Determinar qué caras son visibles
+  float viewAngle = fmod(angle, 2 * PI);
+  if (viewAngle < 0) viewAngle += 2 * PI;
+
+  // Cara frontal (visible si miramos desde adelante)
+  if (viewAngle > PI * 0.25f && viewAngle < PI * 0.75f) {
+    drawQuad(sx[0], sy[0], sx[1], sy[1], sx[5], sy[5], sx[4], sy[4], bodyCol);
+  }
+
+  // Cara trasera
+  if (viewAngle > PI * 1.25f && viewAngle < PI * 1.75f) {
+    drawQuad(sx[3], sy[3], sx[2], sy[2], sx[6], sy[6], sx[7], sy[7], darkCol);
+  }
+
+  // Cara izquierda
+  if (viewAngle < PI * 0.5f || viewAngle > PI * 1.5f) {
+    drawQuad(sx[0], sy[0], sx[3], sy[3], sx[7], sy[7], sx[4], sy[4], darkCol);
+  }
+
+  // Cara derecha
+  if (viewAngle > PI * 0.5f && viewAngle < PI * 1.5f) {
+    drawQuad(sx[1], sy[1], sx[2], sy[2], sx[6], sy[6], sx[5], sy[5], bodyCol);
+  }
+
+  // Techo (siempre visible desde arriba)
+  drawQuad(sx[4], sy[4], sx[5], sy[5], sx[6], sy[6], sx[7], sy[7], roofCol);
+
+  // Ventanas en el techo (simplificadas)
+  int wx1 = (sx[4] + sx[5]) / 2 - 8;
+  int wy1 = (sy[4] + sy[5]) / 2 + 2;
+  spr.fillRect(wx1, wy1, 16, 8, windowCol);
+
+  // Sombra debajo del carro
+  spr.fillEllipse(carCenterX, carCenterY + 35, 25, 8, rgb(20, 20, 20));
+
+  // --- TEXTOS DE LA PANTALLA ---
+  spr.fillRect(0, 100, SCR_W, 3, TFT_RED);
+  spr.fillRect(0, 105, SCR_W, 3, TFT_WHITE);
 
   spr.setTextColor(TFT_RED);
   spr.setTextSize(3);
-  spr.setCursor(22, 50);
+  spr.setCursor(22, 115);
   spr.print("OUTRUN ESP32");
 
   spr.setTextSize(2);
   spr.setTextColor(TFT_YELLOW);
-  spr.setCursor(60, 85);
+  spr.setCursor(60, 145);
   spr.print("3D RACING");
 
   spr.setTextSize(1);
   spr.setTextColor(TFT_WHITE);
-  spr.setCursor(30, 140);
-  spr.print("LEFT / RIGHT buttons to steer");
-  spr.setCursor(30, 155);
-  spr.print("Car accelerates automatically");
   spr.setCursor(30, 170);
+  spr.print("LEFT / RIGHT buttons to steer");
+  spr.setCursor(30, 185);
+  spr.print("Car accelerates automatically");
+  spr.setCursor(30, 200);
   spr.print("Stay on road! Avoid traffic!");
 
   spr.setTextColor(TFT_CYAN);
-  spr.setCursor(25, 195);
+  spr.setCursor(25, 218);
   spr.print("Hills + Curves + Fog + Traffic");
-
-  spr.setTextColor(rgb(120, 120, 120));
-  spr.setCursor(85, 220);
-  spr.print("Get ready...");
 
   spr.pushSprite(0, 0);
 }

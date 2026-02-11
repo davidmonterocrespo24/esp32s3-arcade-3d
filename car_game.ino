@@ -76,9 +76,13 @@ void setup() {
   // Inicializar tráfico
   initTraffic(maxSpeed);
 
-  // Mostrar pantalla de inicio
-  drawStartScreen();
-  delay(2500);
+  // Mostrar pantalla de inicio con carro rotando (3 segundos)
+  unsigned long startTime = millis();
+  while (millis() - startTime < 3000) {
+    float animTime = (millis() - startTime) * 0.001f; // Convertir a segundos
+    drawStartScreen(animTime);
+    delay(16); // ~60 FPS
+  }
 
   lastFrameMs = millis();
   distSinceTimeChange = 0;

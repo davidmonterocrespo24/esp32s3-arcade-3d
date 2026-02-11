@@ -56,8 +56,8 @@ void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTim
 // Dibujar velocímetro circular estilo Top Gear
 void drawSpeedometer(float speed, float maxSpeed);
 
-// Dibujar pantalla de inicio
-void drawStartScreen();
+// Dibujar pantalla de inicio con carro rotando
+void drawStartScreen(float time);
 
 // Dibujar mensaje de crash
 void drawCrashMessage();
