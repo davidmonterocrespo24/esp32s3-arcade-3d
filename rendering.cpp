@@ -172,22 +172,87 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
 }
 
 void drawPlayerCar() {
-  // AUMENTADO TAMAÑO JUGADOR (1.5x)
-  const int cW = 66; // Antes 44
-  const int cH = 42; // Antes 28
-  int cx = SCR_CX, cy = SCR_H - 20;
+  // AUMENTADO TAMAÑO JUGADOR (1.5x - Restaurando 3D del usuario)
+  
+  // --- SOMBRA (Dibuja el suelo debajo del coche) ---
+  int carCenterX = SCR_CX;
+  int carCenterY = 85; 
+  spr.fillEllipse(carCenterX, carCenterY + 40, 80, 25, rgb(15, 15, 15)); // Sombra más grande
 
-  spr.fillRect(cx - cW / 2 + 3, cy + 2, cW - 6, 4, rgb(30, 30, 30));
-  spr.fillRect(cx - cW / 2 - 3, cy - 12, 5, 14, rgb(20, 20, 20));
-  spr.fillRect(cx + cW / 2 - 2, cy - 12, 5, 14, rgb(20, 20, 20));
-  spr.fillRect(cx - cW / 2, cy - 18, cW, 18, rgb(220, 20, 20));
-  int rw = cW - 16;
-  spr.fillRect(cx - rw / 2, cy - cH, rw, 14, rgb(200, 15, 15));
-  spr.fillRect(cx - rw / 2 + 3, cy - cH + 2, rw - 6, 6, rgb(100, 180, 255));
-  spr.fillRect(cx - cW / 2 + 2, cy - 14, 6, 4, TFT_ORANGE);
-  spr.fillRect(cx + cW / 2 - 8, cy - 14, 6, 4, TFT_ORANGE);
-  spr.drawFastHLine(cx - 1, cy - 18, 3, TFT_WHITE);
-  spr.drawFastHLine(cx - 1, cy - 10, 3, TFT_WHITE);
+  // --- MOTOR 3D REAL ---
+  // Usamos una variable global de tiempo para el giro (si existe) o fijo
+  // Como 'time' no se pasa a esta función, usaremos un truco o lo dejaremos fijo
+  // El usuario usaba 'time', asumiremos que quería animación en intro, pero en juego es fijo?
+  // En game loop drawPlayerCar() no recibe argumentos.
+  // Asumiremos ángulo 0 (recto) o giro leve según input?
+  // Por ahora ángulo 0 para que se vea bien la trasera.
+  
+  float angle = -playerX * 0.5; // Girar el cuerpo del coche al girar (efecto extra)
+  float cosA = cos(angle);
+  float sinA = sin(angle);
+
+  // Esculpimos el coche: 16 Vértices (Escalados 1.5x)
+  float verts[16][3] = {
+    // --- CHASIS INFERIOR (0-7) ---
+    {-33, 0, -72}, { 33, 0, -72}, { 33, 0,  72}, {-33, 0,  72}, // Base
+    {-33, 12, -72}, { 33, 12, -72}, { 36, 21, 72}, {-36, 21, 72}, // Capó/Maletero
+
+    // --- CABINA Y VIDRIOS (8-15) ---
+    {-27, 15, -22}, { 27, 15, -22}, { 30, 21, 37}, {-30, 21, 37}, // Base vidrios
+    {-21, 36,  0},  { 21, 36,  0},  { 21, 33, 22}, {-21, 33, 22}  // Techo
+  };
+
+  float sx[16], sy[16];
+
+  // Matemáticas de Proyección
+  for (int i = 0; i < 16; i++) {
+    // 1. Rotación sobre el eje Y
+    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
+    float ry = verts[i][1];
+    float rz = verts[i][0] * sinA + verts[i][2] * cosA;
+
+    // 2. Inclinación de la cámara
+    float pitch = 0.4f; 
+    float camY = ry * cos(pitch) - rz * sin(pitch);
+    float camZ = ry * sin(pitch) + rz * cos(pitch);
+
+    // 3. Perspectiva
+    camZ += 150.0f;
+    float fov = 160.0f;
+    
+    // Proyección final
+    sx[i] = carCenterX + (rx * fov) / camZ;
+    sy[i] = carCenterY - (camY * fov) / camZ; 
+  }
+
+  // --- LÓGICA DE DIBUJADO (CULLING) ---
+  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t col) {
+    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
+    if (cross > 0) { 
+      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], col);
+    }
+  };
+
+  uint16_t hoodRed  = rgb(255, 60, 60);
+  uint16_t bodyRed  = rgb(210, 30, 30);
+  uint16_t darkRed  = rgb(140, 20, 20);
+  uint16_t glassCol = rgb(80, 180, 255);
+  uint16_t grillCol = rgb(30, 30, 30);
+
+  // 1. Dibujamos el cuerpo principal
+  drawFace(0, 1, 2, 3, darkRed);  // Base
+  drawFace(7, 4, 0, 3, bodyRed);  // Izq
+  drawFace(5, 6, 2, 1, bodyRed);  // Der
+  drawFace(6, 7, 3, 2, darkRed);  // Trasera
+  drawFace(4, 5, 1, 0, grillCol); // Frontal
+  drawFace(7, 6, 5, 4, hoodRed);  // Capó
+
+  // 2. Dibujamos la cabina
+  drawFace(15, 12, 8, 11, bodyRed);   // Puerta izq
+  drawFace(13, 14, 10, 9, bodyRed);   // Puerta der
+  drawFace(14, 15, 11, 10, grillCol); // Vidrio trasero
+  drawFace(12, 13, 9, 8, glassCol);   // Parabrisas
+  drawFace(15, 14, 13, 12, hoodRed);  // Techo
 }
 
 void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) {
@@ -496,8 +561,8 @@ void drawRoad(float position, float playerX, float playerZdist,
       int tw1 = p1.w * 1.8;
       int tw0 = p0.w * 1.8;
       // Altura del túnel AUMENTADA para llegar al horizonte
-      int th1 = (int)(p1.scale * 100000);
-      int th0 = (int)(p0.scale * 100000);
+      int th1 = (int)(p1.scale * 120000);
+      int th0 = (int)(p0.scale * 120000);
 
       uint16_t wCol = (n % 2 == 0) ? rgb(80, 70, 60) : rgb(70, 60, 50);
       uint16_t rCol = (n % 2 == 0) ? rgb(60, 50, 40) : rgb(50, 40, 30);
