@@ -64,44 +64,70 @@ void addSprite(int idx, int type, float off) {
 void buildTrack() {
   segCount = 0;
 
-  // Agregar curvas normales
-  addRoad(25, 25, 25, 0, 0);      // Recta de salida
-  addRoad(50, 50, 50, -2.0, 0);   // Curva izquierda
-  addRoad(50, 50, 50,  4.0, 40);  // Curva derecha + colina
-  addRoad(50, 50, 50,  2.0, -20); // Curva suave + bajada
-  addRoad(50, 50, 50, -4.0, -40); // Curva cerrada izq + bajada
+  // Circuito variado con curvas en ambos sentidos
+  addRoad(25, 25, 25, 0, 0);       // Recta de salida
+  addRoad(40, 40, 40, -3.0, 0);    // Curva IZQUIERDA suave
+  addRoad(30, 30, 30,  0, 20);     // Recta + colina
+  addRoad(50, 50, 50,  4.0, 0);    // Curva DERECHA fuerte
+  addRoad(20, 20, 20,  0, -30);    // Recta + bajada
+  addRoad(40, 40, 40,  2.5, 10);   // Curva DERECHA + subida
+  addRoad(30, 30, 30, -2.0, 0);    // Curva IZQUIERDA media
+  addRoad(25, 25, 25,  0, -15);    // Recta plana
+  addRoad(45, 45, 45, -3.5, -20);  // Curva IZQUIERDA + bajada
+  addRoad(35, 35, 35,  3.0, 25);   // Curva DERECHA + colina
 
   // Rellenar hasta TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0);
   trackLength = (float)TOTAL_SEGS * SEG_LEN;
 
-  // 1. ZONA DEL TÚNEL (Segmentos 120 al 180)
-  for (int i = 120; i < 180; i++) {
+  // 1. TÚNEL ÚNICO (Solo 1 túnel largo, no múltiples)
+  // Posicionado en el segundo tercio de la pista
+  for (int i = 65; i < 95; i++) {  // Solo 30 segmentos (era 60)
     segments[i].tunnel = true;
   }
 
-  // 2. CONSTRUIR LA CIUDAD (Agrupar edificios en bloques de manzanas)
+  // 2. CONSTRUIR LA CIUDAD (Edificios variados estilo Nueva York/Horizon Chase)
+  int buildCounterL = 0; // Contadores para duración del edificio actual
+  int buildCounterR = 0;
   int curBuildL = 0, curBuildR = 0;
   uint16_t curColL = 0, curColR = 0;
 
   for (int i = 0; i < TOTAL_SEGS; i++) {
     if (segments[i].tunnel) continue;
 
-    // Cada 12 segmentos creamos una "manzana" nueva
-    if (i % 12 == 0) {
-      curBuildL = (random(0, 2) == 0) ? random(60000, 150000) : 0;
-      curBuildR = (random(0, 2) == 0) ? random(60000, 150000) : 0;
-      curColL = rgb(random(60, 150), random(60, 150), random(80, 180));
-      curColR = rgb(random(60, 150), random(60, 150), random(80, 180));
+    // --- LADO IZQUIERDO (Edificios estrechos y variados) ---
+    if (buildCounterL <= 0) {
+      // 80% probabilidad de edificio, 20% hueco
+      if (random(0, 10) < 8) {
+        // Altura muy variada para horizonte dentado
+        curBuildL = random(50000, 160000);
+        // Colores urbanos (grises, marrones, azules oscuros)
+        curColL = rgb(random(60, 160), random(60, 140), random(70, 150));
+        // Edificios estrechos (2 a 4 segmentos de ancho)
+        buildCounterL = random(2, 5);
+      } else {
+        curBuildL = 0; // Hueco entre edificios
+        buildCounterL = random(1, 3);
+      }
     }
+    segments[i].buildL = curBuildL;
+    segments[i].colorL = curColL;
+    buildCounterL--;
 
-    // Los primeros 9 segmentos son el edificio, los últimos 3 son el hueco (calle lateral)
-    if (i % 12 < 9) {
-      segments[i].buildL = curBuildL;
-      segments[i].buildR = curBuildR;
-      segments[i].colorL = curColL;
-      segments[i].colorR = curColR;
+    // --- LADO DERECHO (Lógica independiente para variar) ---
+    if (buildCounterR <= 0) {
+      if (random(0, 10) < 8) {
+        curBuildR = random(50000, 160000);
+        curColR = rgb(random(60, 160), random(60, 140), random(70, 150));
+        buildCounterR = random(2, 5);
+      } else {
+        curBuildR = 0;
+        buildCounterR = random(1, 3);
+      }
     }
+    segments[i].buildR = curBuildR;
+    segments[i].colorR = curColR;
+    buildCounterR--;
   }
 
   // 3. Árboles en huecos entre edificios

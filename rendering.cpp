@@ -29,34 +29,31 @@ int16_t  rClip[DRAW_DIST];
 // ═══════════════════════════════════════════════════════════════
 
 void initBackground() {
-  // Crear sprite de fondo en PSRAM (320x120 - mitad superior de pantalla)
+  // Crear sprite de fondo en PSRAM (DOBLE de ancho para seamless scrolling)
   bgSpr.setColorDepth(16);
-  bgSpr.createSprite(SCR_W, SCR_CY);
+  bgSpr.createSprite(SCR_W * 2, SCR_CY);  // 640x120 (doble ancho)
   bgSpr.setAttribute(PSRAM_ENABLE, true);
 
-  // 1. Dibujar cielo con degradado vertical
+  // 1. Dibujar cielo con degradado vertical (en todo el ancho)
   for (int y = 0; y < SCR_CY; y++) {
     float t = (float)y / SCR_CY;
-    // Degradado: azul oscuro arriba → azul claro abajo
     uint16_t skyCol = lerpCol(rgb(60, 120, 240), rgb(180, 200, 255), t);
-    bgSpr.drawFastHLine(0, y, SCR_W, skyCol);
+    bgSpr.drawFastHLine(0, y, SCR_W * 2, skyCol);  // Todo el ancho
   }
 
-  // 2. Sol estilo RetroWave/OutRun (opcional, puedes comentarlo)
-  int sunX = SCR_W / 2 + 50;
+  // 2. Sol ÚNICO en el centro (no se duplica)
+  int sunX = SCR_W;  // Centro del buffer doble
   int sunY = SCR_CY - 25;
   bgSpr.fillCircle(sunX, sunY, 25, rgb(255, 200, 50));
   bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 240, 100));
 
-  // 3. Montañas procedurales con seno/coseno
-  // Capa 1: Montañas lejanas (oscuras)
-  for (int x = 0; x < SCR_W; x++) {
+  // 3. Montañas procedurales (repetir patrón para seamless)
+  for (int x = 0; x < SCR_W * 2; x++) {
+    // Capa 1: Montañas lejanas (oscuras)
     int h1 = (int)(sinf(x * 0.03f) * 20.0f + cosf(x * 0.015f) * 15.0f + 35.0f);
     bgSpr.drawFastVLine(x, SCR_CY - h1, h1, rgb(40, 50, 70));
-  }
 
-  // Capa 2: Montañas cercanas (verdes)
-  for (int x = 0; x < SCR_W; x++) {
+    // Capa 2: Montañas cercanas (verdes)
     int h2 = (int)(sinf(x * 0.04f + 2.0f) * 12.0f + cosf(x * 0.08f) * 8.0f + 20.0f);
     bgSpr.drawFastVLine(x, SCR_CY - h2, h2, rgb(25, 80, 45));
   }
@@ -167,13 +164,12 @@ void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) 
   }
 
   // --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
-  // Calculamos desplazamiento X con wrap-around
-  int bgX = (int)skyOffset % SCR_W;
-  while (bgX < 0) bgX += SCR_W; // Asegurar positivo
+  // Calculamos desplazamiento X con wrap-around sobre buffer doble (640px)
+  int bgX = (int)skyOffset % (SCR_W * 2);
+  while (bgX < 0) bgX += (SCR_W * 2); // Asegurar positivo
 
-  // Dibujamos el fondo DOS VECES para seamless scrolling
-  bgSpr.pushToSprite(&spr, -bgX, 0);
-  bgSpr.pushToSprite(&spr, SCR_W - bgX, 0);
+  // Dibujamos una ventana deslizante del buffer doble (sin duplicados)
+  bgSpr.pushToSprite(&spr, -bgX, 0, SCR_W, SCR_CY);
 
   // Estrellas por la noche (opcional, sobre el parallax)
   if (timeOfDay == 2) {
@@ -356,8 +352,9 @@ void drawRoad(float position, float playerX, float playerZdist,
       }
     }
 
-    // EDIFICIOS 3D
+    // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
     if (!seg.tunnel) {
+      // --- EDIFICIO IZQUIERDO ---
       if (seg.buildL > 0) {
         int h1 = (int)(p1.scale * seg.buildL);
         int h0 = (int)(p0.scale * seg.buildL);
@@ -365,23 +362,44 @@ void drawRoad(float position, float playerX, float playerZdist,
         int bw1 = (int)(p1.scale * 50000);
         int bw0 = (int)(p0.scale * 50000);
 
+        // 1. Pared lateral (oscurecida)
         drawQuad(p0.x - off0, p0.y, p1.x - off1, p1.y,
                  p1.x - off1, p1.y - h1, p0.x - off0, p0.y - h0,
                  darkenCol(seg.colorL, 0.6));
+
+        // >>> NUEVO: Líneas de ventanas/pisos <<<
+        int numFloors = h0 / 25; // Una línea cada 25 pixels
+        if (numFloors > 1 && numFloors < 20) { // Evitar exceso lejos
+          // Alternar luz de ventanas según segmento
+          uint16_t winCol = (sIdx % 3 == 0) ? rgb(220, 220, 180) : rgb(60, 60, 80);
+
+          for (int fl = 1; fl < numFloors; fl++) {
+            float t = (float)fl / numFloors;
+            int wy0 = p0.y - (int)(h0 * t);  // Y cercano
+            int wy1 = p1.y - (int)(h1 * t);  // Y lejano
+            // Línea que sigue la perspectiva
+            spr.drawLine(p0.x - off0, wy0, p1.x - off1, wy1, winCol);
+          }
+        }
+
+        // 2. Techo (más oscuro)
         drawQuad(p0.x - off0, p0.y - h0, p1.x - off1, p1.y - h1,
                  p1.x - off1 - bw1, p1.y - h1, p0.x - off0 - bw0, p0.y - h0,
                  darkenCol(seg.colorL, 0.85));
 
-        if (prevSeg.buildL == 0) {
+        // 3. Fachada frontal (al inicio del edificio)
+        if (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) {
           drawQuad(p0.x - off0, p0.y, p0.x - off0 - bw0, p0.y,
                    p0.x - off0 - bw0, p0.y - h0, p0.x - off0, p0.y - h0,
                    seg.colorL);
+          // Ventana iluminada en fachada
           if (h0 > 12 && bw0 > 6)
             spr.fillRect(p0.x - off0 - bw0 * 3 / 4, p0.y - h0 * 5 / 6,
                          bw0 / 2, h0 / 4, rgb(255, 255, 180));
         }
       }
 
+      // --- EDIFICIO DERECHO ---
       if (seg.buildR > 0) {
         int h1 = (int)(p1.scale * seg.buildR);
         int h0 = (int)(p0.scale * seg.buildR);
@@ -389,14 +407,31 @@ void drawRoad(float position, float playerX, float playerZdist,
         int bw1 = (int)(p1.scale * 50000);
         int bw0 = (int)(p0.scale * 50000);
 
+        // 1. Pared lateral derecha
         drawQuad(p0.x + off0, p0.y, p1.x + off1, p1.y,
                  p1.x + off1, p1.y - h1, p0.x + off0, p0.y - h0,
                  darkenCol(seg.colorR, 0.6));
+
+        // >>> NUEVO: Ventanas derecha <<<
+        int numFloors = h0 / 25;
+        if (numFloors > 1 && numFloors < 20) {
+          uint16_t winCol = (sIdx % 3 == 1) ? rgb(220, 220, 180) : rgb(60, 60, 80);
+
+          for (int fl = 1; fl < numFloors; fl++) {
+            float t = (float)fl / numFloors;
+            int wy0 = p0.y - (int)(h0 * t);
+            int wy1 = p1.y - (int)(h1 * t);
+            spr.drawLine(p0.x + off0, wy0, p1.x + off1, wy1, winCol);
+          }
+        }
+
+        // 2. Techo derecho
         drawQuad(p0.x + off0, p0.y - h0, p1.x + off1, p1.y - h1,
                  p1.x + off1 + bw1, p1.y - h1, p0.x + off0 + bw0, p0.y - h0,
                  darkenCol(seg.colorR, 0.85));
 
-        if (prevSeg.buildR == 0) {
+        // 3. Fachada frontal derecha
+        if (prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) {
           drawQuad(p0.x + off0, p0.y, p0.x + off0 + bw0, p0.y,
                    p0.x + off0 + bw0, p0.y - h0, p0.x + off0, p0.y - h0,
                    seg.colorR);
