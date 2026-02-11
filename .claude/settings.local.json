@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(move car_racing_3d.ino car_game.ino)"
+    ]
+  }
+}
