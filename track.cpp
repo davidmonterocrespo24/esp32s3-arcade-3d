@@ -113,17 +113,27 @@ void buildTrack() {
   }
 }
 
+// Colores de tráfico en Flash (PROGMEM) - ahorra RAM
+const uint16_t PROGMEM trafficColors[] = {
+  0x051C,  // rgb(0,80,220)   - Azul
+  0xDDE0,  // rgb(220,200,0)  - Amarillo
+  0xC618,  // rgb(200,200,200)- Gris
+  0x05A0,  // rgb(0,180,80)   - Verde
+  0xFC60,  // rgb(255,100,0)  - Naranja
+  0xA01C,  // rgb(160,0,200)  - Morado
+  0x05BC,  // rgb(0,180,180)  - Cyan
+  0xB1E8,  // rgb(180,60,60)  - Rojo oscuro
+  0xFDB2,  // rgb(255,180,200)- Rosa
+  0x6318,  // rgb(100,100,100)- Gris oscuro
+  0x0780,  // rgb(0,120,0)    - Verde oscuro
+  0xC5E0   // rgb(200,150,0)  - Dorado
+};
+
 void initTraffic(float maxSpeed) {
-  const uint16_t cols[] = {
-    rgb(0,80,220),  rgb(220,200,0), rgb(200,200,200),
-    rgb(0,180,80),  rgb(255,100,0), rgb(160,0,200),
-    rgb(0,180,180), rgb(180,60,60), rgb(255,180,200),
-    rgb(100,100,100), rgb(0,120,0), rgb(200,150,0)
-  };
   for (int i = 0; i < MAX_CARS; i++) {
     trafficCars[i].offset = random(-8, 9) / 10.0;
     trafficCars[i].z      = random(0, TOTAL_SEGS) * SEG_LEN;
     trafficCars[i].speed  = maxSpeed * (0.2 + random(0, 50) / 100.0);
-    trafficCars[i].color  = cols[i % 6];
+    trafficCars[i].color  = pgm_read_word(&trafficColors[i % 12]);
   }
 }

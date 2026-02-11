@@ -24,6 +24,8 @@ extern float currentLapTime;
 extern float lastLapTime;
 extern float bestLapTime;
 extern float prevPosition;
+extern int currentLap;
+extern int totalLaps;
 
 // ═══════════════════════════════════════════════════════════════
 //  FUNCIONES DE FÍSICA

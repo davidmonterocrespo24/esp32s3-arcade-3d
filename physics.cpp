@@ -29,6 +29,8 @@ float currentLapTime = 0;
 float lastLapTime    = 0;
 float bestLapTime    = 0;
 float prevPosition   = 0;
+int currentLap       = 1;
+int totalLaps        = 3;
 
 // ═══════════════════════════════════════════════════════════════
 //  IMPLEMENTACIÓN
@@ -82,6 +84,14 @@ void updatePhysics(float dt) {
       lastLapTime = currentLapTime;
       if (bestLapTime <= 0 || currentLapTime < bestLapTime)
         bestLapTime = currentLapTime;
+
+      // Avanzar a la siguiente vuelta
+      if (currentLap < totalLaps) {
+        currentLap++;
+      } else {
+        // ¡Carrera terminada! Reiniciar
+        currentLap = 1;
+      }
     }
     currentLapTime = 0;
   }

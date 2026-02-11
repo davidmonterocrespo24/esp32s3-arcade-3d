@@ -50,8 +50,10 @@ void setup() {
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
 
-  // Crear sprite para double buffering
+  // Crear sprite para double buffering en PSRAM (ahorra ~150KB RAM)
+  spr.setColorDepth(16);
   spr.createSprite(SCR_W, SCR_H);
+  spr.setAttribute(PSRAM_ENABLE, true);
 
   // Inicializar física
   initPhysics();

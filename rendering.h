@@ -46,6 +46,9 @@ void drawRoad(float position, float playerX, float playerZdist,
 // Dibujar el HUD
 void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime);
 
+// Dibujar velocímetro circular estilo Top Gear
+void drawSpeedometer(float speed, float maxSpeed);
+
 // Dibujar pantalla de inicio
 void drawStartScreen();
 

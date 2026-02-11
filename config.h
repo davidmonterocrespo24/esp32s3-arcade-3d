@@ -30,7 +30,7 @@
 #define SEG_LEN     200       // Longitud de cada segmento
 #define RUMBLE_LEN  3         // Longitud de las franjas de rumble
 #define DRAW_DIST   40        // Distancia de dibujado
-#define TOTAL_SEGS  300       // Total de segmentos en la pista
+#define TOTAL_SEGS  200       // Total de segmentos en la pista (optimizado RAM)
 #define ROAD_W      2000      // Ancho de la carretera
 #define LANES       3         // Número de carriles
 #define FOV_DEG     100       // Campo de visión en grados
