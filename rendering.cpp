@@ -149,8 +149,9 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
 }
 
 void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
-  int w = (int)(scale * 30000);
-  int h = (int)(scale * 18000);
+  // AUMENTADO TAMAÑO DE COCHES
+  int w = (int)(scale * 75000);  // Antes 30000 -> 2.5x
+  int h = (int)(scale * 45000);  // Antes 18000 -> 2.5x
   if (w < 3 || h < 2) return;
   int bottomY = min(cy, (int)clipY);
   int topY = bottomY - h;
@@ -171,7 +172,9 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
 }
 
 void drawPlayerCar() {
-  const int cW = 44, cH = 28;
+  // AUMENTADO TAMAÑO JUGADOR (1.5x)
+  const int cW = 66; // Antes 44
+  const int cH = 42; // Antes 28
   int cx = SCR_CX, cy = SCR_H - 20;
 
   spr.fillRect(cx - cW / 2 + 3, cy + 2, cW - 6, 4, rgb(30, 30, 30));
@@ -493,8 +496,8 @@ void drawRoad(float position, float playerX, float playerZdist,
       int tw1 = p1.w * 1.8;
       int tw0 = p0.w * 1.8;
       // Altura del túnel AUMENTADA para llegar al horizonte
-      int th1 = (int)(p1.scale * 500000);
-      int th0 = (int)(p0.scale * 500000);
+      int th1 = (int)(p1.scale * 100000);
+      int th0 = (int)(p0.scale * 100000);
 
       uint16_t wCol = (n % 2 == 0) ? rgb(80, 70, 60) : rgb(70, 60, 50);
       uint16_t rCol = (n % 2 == 0) ? rgb(60, 50, 40) : rgb(50, 40, 30);
