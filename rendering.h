@@ -17,6 +17,10 @@
 extern TFT_eSPI tft;
 extern TFT_eSprite spr;
 
+// -- PARALLAX BACKGROUND (Estilo Horizon Chase) --
+extern TFT_eSprite bgSpr;
+extern float skyOffset;
+
 extern RenderPt rCache[DRAW_DIST];
 extern int16_t  rClip[DRAW_DIST];
 
@@ -33,8 +37,11 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY);
 // Dibujar coche del jugador
 void drawPlayerCar();
 
-// Dibujar el cielo
-void drawSky(float position, float playerZdist, int timeOfDay);
+// Inicializar fondo parallax con montañas procedurales
+void initBackground();
+
+// Dibujar el cielo con efecto parallax
+void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset);
 
 // Dibujar un trapecio 3D (quad)
 void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c);

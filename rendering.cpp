@@ -17,12 +17,50 @@
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite spr = TFT_eSprite(&tft);
 
+// -- PARALLAX BACKGROUND --
+TFT_eSprite bgSpr = TFT_eSprite(&tft);
+float skyOffset = 0.0f;
+
 RenderPt rCache[DRAW_DIST];
 int16_t  rClip[DRAW_DIST];
 
 // ═══════════════════════════════════════════════════════════════
 //  IMPLEMENTACIÓN DE FUNCIONES
 // ═══════════════════════════════════════════════════════════════
+
+void initBackground() {
+  // Crear sprite de fondo en PSRAM (320x120 - mitad superior de pantalla)
+  bgSpr.setColorDepth(16);
+  bgSpr.createSprite(SCR_W, SCR_CY);
+  bgSpr.setAttribute(PSRAM_ENABLE, true);
+
+  // 1. Dibujar cielo con degradado vertical
+  for (int y = 0; y < SCR_CY; y++) {
+    float t = (float)y / SCR_CY;
+    // Degradado: azul oscuro arriba → azul claro abajo
+    uint16_t skyCol = lerpCol(rgb(60, 120, 240), rgb(180, 200, 255), t);
+    bgSpr.drawFastHLine(0, y, SCR_W, skyCol);
+  }
+
+  // 2. Sol estilo RetroWave/OutRun (opcional, puedes comentarlo)
+  int sunX = SCR_W / 2 + 50;
+  int sunY = SCR_CY - 25;
+  bgSpr.fillCircle(sunX, sunY, 25, rgb(255, 200, 50));
+  bgSpr.fillCircle(sunX, sunY, 20, rgb(255, 240, 100));
+
+  // 3. Montañas procedurales con seno/coseno
+  // Capa 1: Montañas lejanas (oscuras)
+  for (int x = 0; x < SCR_W; x++) {
+    int h1 = (int)(sinf(x * 0.03f) * 20.0f + cosf(x * 0.015f) * 15.0f + 35.0f);
+    bgSpr.drawFastVLine(x, SCR_CY - h1, h1, rgb(40, 50, 70));
+  }
+
+  // Capa 2: Montañas cercanas (verdes)
+  for (int x = 0; x < SCR_W; x++) {
+    int h2 = (int)(sinf(x * 0.04f + 2.0f) * 12.0f + cosf(x * 0.08f) * 8.0f + 20.0f);
+    bgSpr.drawFastVLine(x, SCR_CY - h2, h2, rgb(25, 80, 45));
+  }
+}
 
 void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int timeOfDay) {
   int bottomY = min((int)sy, (int)clipY);
@@ -112,8 +150,10 @@ void drawPlayerCar() {
   spr.drawFastHLine(cx - 1, cy - 10, 3, TFT_WHITE);
 }
 
-void drawSky(float position, float playerZdist, int timeOfDay) {
+void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) {
   int pSegIdx = findSegIdx(position + playerZdist);
+
+  // Si estamos en túnel, techo negro con luces
   if (segments[pSegIdx].tunnel) {
     uint16_t roofCol = rgb(25, 22, 20);
     spr.fillRect(0, 0, SCR_W, SCR_CY, roofCol);
@@ -126,20 +166,26 @@ void drawSky(float position, float playerZdist, int timeOfDay) {
     return;
   }
 
-  int h = SCR_CY, band = h / 3;
-  spr.fillRect(0, 0,      SCR_W, band,         colSky1);
-  spr.fillRect(0, band,   SCR_W, band,         colSky2);
-  spr.fillRect(0, band*2, SCR_W, h - band * 2, colSky3);
+  // --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
+  // Calculamos desplazamiento X con wrap-around
+  int bgX = (int)skyOffset % SCR_W;
+  while (bgX < 0) bgX += SCR_W; // Asegurar positivo
 
+  // Dibujamos el fondo DOS VECES para seamless scrolling
+  bgSpr.pushToSprite(&spr, -bgX, 0);
+  bgSpr.pushToSprite(&spr, SCR_W - bgX, 0);
+
+  // Estrellas por la noche (opcional, sobre el parallax)
   if (timeOfDay == 2) {
-    // Estrellas en PROGMEM - ahorra RAM
     static const uint16_t PROGMEM stX[] = {15,45,78,120,155,190,225,260,290,310,33,67,105,145,185,230,275};
     static const uint8_t PROGMEM stY[] = {8,25,15,5,30,12,22,8,18,28,40,48,35,50,42,55,38};
     for (int i = 0; i < 17; i++) {
       spr.drawPixel(pgm_read_word(&stX[i]), pgm_read_byte(&stY[i]), TFT_WHITE);
     }
   }
-  spr.drawFastHLine(0, h, SCR_W, lerpCol(colSky3, TFT_WHITE, 0.3));
+
+  // Línea de horizonte
+  spr.drawFastHLine(0, SCR_CY, SCR_W, rgb(100, 100, 100));
 }
 
 void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c) {

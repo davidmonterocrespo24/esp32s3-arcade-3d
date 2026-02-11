@@ -61,6 +61,9 @@ void setup() {
   // Inicializar colores
   initColors(timeOfDay);
 
+  // ¡NUEVO! Generar montañas parallax en PSRAM
+  initBackground();
+
   // Construir pista
   buildTrack();
 
@@ -89,10 +92,17 @@ void loop() {
     handleInput(dt);
     updatePhysics(dt);
     checkCollisions();
+
+    // --- MAGIA DEL PARALLAX ---
+    // El fondo se mueve según la curva y velocidad (efecto Horizon Chase)
+    int pSeg = findSegIdx(position + playerZdist);
+    float curveForce = segments[pSeg].curve;
+    // Factor 150.0 controla velocidad de rotación del fondo
+    skyOffset += curveForce * (speed / maxSpeed) * 150.0f * dt;
   }
 
   // Renderizar frame en el sprite (buffer)
-  drawSky(position, playerZdist, timeOfDay);
+  drawSky(position, playerZdist, timeOfDay, skyOffset);
   drawRoad(position, playerX, playerZdist, cameraDepth, timeOfDay);
   drawPlayerCar();
   drawHUD(speed, maxSpeed, currentLapTime, bestLapTime);
