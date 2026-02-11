@@ -45,7 +45,11 @@ struct Segment {
   float y;                  
   int8_t spriteType;        
   float  spriteOffset;      
+  
+  // -- PROPIEDADES 3D POLIGONAL --
   bool   tunnel;            // true = dentro de túnel
+  int    buildL, buildR;    // Altura edificio Izq/Der (0 = sin edificio)
+  uint16_t colorL, colorR;  // Color fachada del edificio
 };
 
 struct RenderPt {
@@ -225,6 +229,10 @@ void addSeg(float curve, float y, bool isTunnel = false) {
   segments[segCount].spriteType   = -1;
   segments[segCount].spriteOffset = 0;
   segments[segCount].tunnel       = isTunnel;
+  segments[segCount].buildL       = 0;
+  segments[segCount].buildR       = 0;
+  segments[segCount].colorL       = 0;
+  segments[segCount].colorR       = 0;
   segCount++;
 }
 
@@ -249,97 +257,56 @@ void addSprite(int idx, int type, float off) {
   }
 }
 
-// Crear un túnel recto (con curva opcional)
-void addTunnel(int length, float curve = 0) {
-  int startSeg = segCount;
-  float sY = lastY();
-  for (int n = 0; n < length; n++) {
-    if (segCount >= TOTAL_SEGS) break;
-    float c = 0;
-    if (curve != 0) {
-      float t = (float)n / length;
-      if (t < 0.25)      c = easeIn(0, curve, t * 4);
-      else if (t < 0.75) c = curve;
-      else               c = easeInOut(curve, 0, (t - 0.75) * 4);
-    }
-    addSeg(c, sY, true);
-  }
-  // Arco de entrada
-  addSprite(startSeg, 6, 0.0);
-  // Arco de salida
-  if (segCount > startSeg + 2)
-    addSprite(segCount - 1, 6, 0.0);
-}
-
-// Decorar los bordes con edificios de ciudad
-void addCityDecorations() {
-  for (int n = 5; n < segCount; n++) {
-    if (segments[n].tunnel) continue; // No dentro del túnel
-    if (segments[n].spriteType >= 0) continue; // Ya tiene sprite
-    int r = random(0, 100);
-    if (r < 18) {
-      // Edificio a la izquierda
-      addSprite(n, 5, -1.5 - random(0, 15) / 10.0);
-    } else if (r < 36) {
-      // Edificio a la derecha
-      addSprite(n, 5,  1.5 + random(0, 15) / 10.0);
-    } else if (r < 40) {
-      // Poste (farola)
-      addSprite(n, 4, (random(0, 2) == 0) ? -1.1 : 1.1);
-    } else if (r < 44) {
-      // Árbol decorativo
-      addSprite(n, random(0, 2), (random(0, 2) == 0) ? -1.3 : 1.3);
-    }
-  }
-}
-
 void buildTrack() {
   segCount = 0;
 
-  // === ZONA 1: Recta de salida con ciudad ===
-  addRoad(25, 25, 25, 0, 0);
+  // Agregar curvas normales
+  addRoad(25, 25, 25, 0, 0);      // Recta de salida
+  addRoad(50, 50, 50, -2.0, 0);   // Curva izquierda
+  addRoad(50, 50, 50,  4.0, 40);  // Curva derecha + colina
+  addRoad(50, 50, 50,  2.0, -20); // Curva suave + bajada
+  addRoad(50, 50, 50, -4.0, -40); // Curva cerrada izq + bajada
 
-  // === ZONA 2: Primer túnel recto ===
-  addTunnel(35);
-
-  // === ZONA 3: Colinas suaves ===
-  addRoad(25, 25, 25, 0,  10);
-  addRoad(25, 25, 25, 0, -20);
-
-  // === ZONA 4: Curvas S con edificios ===
-  addRoad(50, 50, 50, -2.0, 0);
-  addRoad(50, 50, 50,  4.0, 20);
-
-  // === ZONA 5: Túnel con curva ===
-  addTunnel(40, 3.0);
-
-  // === ZONA 6: Más curvas y colinas ===
-  addRoad(50, 50, 50,  2.0, -20);
-  addRoad(50, 50, 50, -2.0, 30);
-  addRoad(50, 50, 50, -4.0, -30);
-
-  // === ZONA 7: Recta larga ===
-  addRoad(25, 25, 25, 0, 0);
-
-  // === ZONA 8: Curva cerrada + colina grande ===
-  addRoad(80, 80, 80, 6.0, 0);
-  addRoad(40, 40, 40, 0, 40);
-
-  // === ZONA 9: Túnel final antes de meta ===
-  addTunnel(30, -2.0);
-
-  // Rellenar y volver a Y=0
-  int rem = TOTAL_SEGS - segCount;
-  if (rem > 3) {
-    float curY = lastY();
-    addRoad(rem / 3, rem / 3, rem - 2 * (rem / 3),
-            -2.0, -curY / SEG_LEN);
-  }
+  // Rellenar hasta TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0);
   trackLength = (float)TOTAL_SEGS * SEG_LEN;
 
-  // Colocar edificios y decoración de ciudad
-  addCityDecorations();
+  // 1. ZONA DEL TÚNEL (Segmentos 120 al 180)
+  for (int i = 120; i < 180; i++) {
+    segments[i].tunnel = true;
+  }
+
+  // 2. CONSTRUIR LA CIUDAD (Agrupar edificios en bloques de manzanas)
+  int curBuildL = 0, curBuildR = 0;
+  uint16_t curColL = 0, curColR = 0;
+
+  for (int i = 0; i < TOTAL_SEGS; i++) {
+    if (segments[i].tunnel) continue;
+
+    // Cada 12 segmentos creamos una "manzana" nueva
+    if (i % 12 == 0) {
+      curBuildL = (random(0, 2) == 0) ? random(60000, 150000) : 0;
+      curBuildR = (random(0, 2) == 0) ? random(60000, 150000) : 0;
+      curColL = rgb(random(60, 150), random(60, 150), random(80, 180));
+      curColR = rgb(random(60, 150), random(60, 150), random(80, 180));
+    }
+
+    // Los primeros 9 segmentos son el edificio, los últimos 3 son el hueco (calle lateral)
+    if (i % 12 < 9) {
+      segments[i].buildL = curBuildL;
+      segments[i].buildR = curBuildR;
+      segments[i].colorL = curColL;
+      segments[i].colorR = curColR;
+    }
+  }
+
+  // 3. Árboles en huecos entre edificios
+  for (int n = 5; n < segCount; n++) {
+    if (segments[n].tunnel || segments[n].buildL > 0 || segments[n].buildR > 0) continue;
+    int r = random(0, 100);
+    if (r < 10) addSprite(n, random(0, 3), -1.5);
+    else if (r < 20) addSprite(n, random(0, 3), 1.5);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -407,66 +374,6 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY) {
       spr.fillRect(sx - pw / 2, bottomY - ph, pw, ph, TFT_WHITE);
       if (ph > 6)
         spr.fillRect(sx - pw / 2, bottomY - ph, pw, 3, TFT_RED);
-      break;
-    }
-    case 5: { // Edificio de ciudad
-      int bh = max(10, (int)(scale * 100000));
-      int bw = max(5, (int)(scale * 40000));
-      if (bh < 4 || bw < 3) return;
-      // Color de fachada según hora del día
-      uint16_t bCol, winCol;
-      if (timeOfDay == 2) {
-        bCol   = rgb(20, 20, 35);
-        winCol = rgb(200, 200, 80); // Ventanas iluminadas de noche
-      } else if (timeOfDay == 1) {
-        bCol   = rgb(120, 100, 90);
-        winCol = rgb(220, 180, 120);
-      } else {
-        bCol   = rgb(140, 140, 155);
-        winCol = rgb(170, 210, 230);
-      }
-      // Cuerpo del edificio
-      spr.fillRect(sx - bw / 2, bottomY - bh, bw, bh, bCol);
-      // Borde/cornisa
-      spr.drawRect(sx - bw / 2, bottomY - bh, bw, bh, darkenCol(bCol, 0.6));
-      // Ventanas (grid)
-      if (bh > 20 && bw > 12) {
-        int wRows = min(6, bh / 8);
-        int wCols = min(3, bw / 8);
-        int ww = max(2, bw / (wCols * 2 + 1));
-        int wh = max(2, bh / (wRows * 2 + 1));
-        for (int wr = 0; wr < wRows; wr++) {
-          for (int wc = 0; wc < wCols; wc++) {
-            int wx = sx - bw / 2 + (wc + 1) * bw / (wCols + 1) - ww / 2;
-            int wy = bottomY - bh + (wr + 1) * bh / (wRows + 1) - wh / 2;
-            spr.fillRect(wx, wy, ww, wh, winCol);
-          }
-        }
-      }
-      // Techo/antena en edificios altos
-      if (bh > 40 && bw > 8) {
-        spr.fillRect(sx - 1, bottomY - bh - bh / 6, 3, bh / 6, darkenCol(bCol, 0.7));
-      }
-      break;
-    }
-    case 6: { // Arco de entrada/salida de túnel
-      int th = max(10, (int)(scale * 80000));
-      int tw = max(10, (int)(scale * 140000));
-      if (th < 5 || tw < 5) return;
-      // Fachada de piedra
-      uint16_t stoneCol = rgb(60, 55, 50);
-      spr.fillRect(sx - tw / 2, bottomY - th, tw, th, stoneCol);
-      // Abertura semicircular (negro)
-      int arcW = tw * 3 / 4;
-      int arcH = th * 4 / 5;
-      spr.fillRect(sx - arcW / 2, bottomY - arcH, arcW, arcH, TFT_BLACK);
-      // Arco superior redondeado
-      int arcR = arcW / 2;
-      spr.fillCircle(sx, bottomY - arcH, arcR, TFT_BLACK);
-      // Borde del arco
-      spr.drawCircle(sx, bottomY - arcH, arcR, rgb(80, 75, 70));
-      // Piedras clave
-      spr.fillRect(sx - 2, bottomY - th, 5, max(2, th / 8), rgb(90, 85, 75));
       break;
     }
   }
@@ -537,6 +444,12 @@ void drawSky() {
     for (int i = 0; i < 17; i++) spr.drawPixel(stX[i], stY[i], TFT_WHITE);
   }
   spr.drawFastHLine(0, h, SCR_W, lerpCol(colSky3, TFT_WHITE, 0.3));
+}
+
+// Función para dibujar trapecios 3D (quads) con 2 triángulos
+void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c) {
+  spr.fillTriangle(x1, y1, x2, y2, x3, y3, c);
+  spr.fillTriangle(x1, y1, x3, y3, x4, y4, c);
 }
 
 void drawRoad() {
@@ -663,20 +576,127 @@ void drawRoad() {
     spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
   }
 
-  for (int n = DRAW_DIST - 1; n > 2; n--) {
+  // --- RENDERIZADO 3D POLIGONAL (DE ATRÁS HACIA ADELANTE) ---
+  for (int n = DRAW_DIST - 1; n > 1; n--) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
+    int prevIdx = (sIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
     Segment& seg = segments[sIdx];
-    if (rCache[n].scale <= 0 || rCache[n].y >= SCR_H) continue;
+    Segment& prevSeg = segments[prevIdx];
 
-    if (seg.spriteType >= 0) {
-      int sprX = rCache[n].x + (int)(rCache[n].scale * seg.spriteOffset * ROAD_W * SCR_CX);
-      drawSpriteShape(seg.spriteType, sprX, rCache[n].y, rCache[n].scale, rClip[n]);
+    RenderPt& p1 = rCache[n];     // Punto lejano
+    RenderPt& p0 = rCache[n - 1]; // Punto cercano
+
+    if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
+
+    // ══════════════════════════════════════════════════════════
+    // 1. TÚNEL EN 3D (Paredes y techo con profundidad real)
+    // ══════════════════════════════════════════════════════════
+    if (seg.tunnel) {
+      int tw1 = p1.w * 1.8; // Ancho interior lejano
+      int tw0 = p0.w * 1.8; // Ancho interior cercano
+      int th1 = (int)(p1.scale * 80000); // Altura lejana
+      int th0 = (int)(p0.scale * 80000); // Altura cercana
+
+      // Color alternado para simular secciones del túnel
+      uint16_t wCol = (n % 2 == 0) ? rgb(80, 70, 60) : rgb(70, 60, 50);
+      uint16_t rCol = (n % 2 == 0) ? rgb(60, 50, 40) : rgb(50, 40, 30);
+
+      // Pared Izquierda del túnel
+      drawQuad(p0.x - tw0, p0.y, p1.x - tw1, p1.y,
+               p1.x - tw1, p1.y - th1, p0.x - tw0, p0.y - th0, wCol);
+      // Pared Derecha del túnel
+      drawQuad(p0.x + tw0, p0.y, p1.x + tw1, p1.y,
+               p1.x + tw1, p1.y - th1, p0.x + tw0, p0.y - th0, wCol);
+      // Techo del túnel
+      drawQuad(p0.x - tw0, p0.y - th0, p1.x - tw1, p1.y - th1,
+               p1.x + tw1, p1.y - th1, p0.x + tw0, p0.y - th0, rCol);
+
+      // Fachada exterior en la entrada del túnel
+      if (!prevSeg.tunnel) {
+        int wOut = p0.w * 4;
+        int hOut = (int)(p0.scale * 120000);
+        uint16_t rockCol = rgb(110, 90, 70);
+        spr.fillRect(p0.x - wOut, p0.y - hOut, wOut - tw0, hOut, rockCol);
+        spr.fillRect(p0.x + tw0,  p0.y - hOut, wOut - tw0, hOut, rockCol);
+        spr.fillRect(p0.x - tw0,  p0.y - hOut, tw0 * 2, hOut - th0, rockCol);
+      }
     }
 
+    // ══════════════════════════════════════════════════════════
+    // 2. EDIFICIOS 3D CON PERSPECTIVA (pared + techo + frente)
+    // ══════════════════════════════════════════════════════════
+    if (!seg.tunnel) {
+      // Edificio Izquierdo
+      if (seg.buildL > 0) {
+        int h1 = (int)(p1.scale * seg.buildL);
+        int h0 = (int)(p0.scale * seg.buildL);
+        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
+        int bw1 = (int)(p1.scale * 50000); // Ancho del edificio (lejano)
+        int bw0 = (int)(p0.scale * 50000); // Ancho del edificio (cercano)
+
+        // Pared lateral (cara que mira a la carretera)
+        drawQuad(p0.x - off0, p0.y, p1.x - off1, p1.y,
+                 p1.x - off1, p1.y - h1, p0.x - off0, p0.y - h0,
+                 darkenCol(seg.colorL, 0.6));
+
+        // Techo del edificio (da la profundidad 3D)
+        drawQuad(p0.x - off0, p0.y - h0, p1.x - off1, p1.y - h1,
+                 p1.x - off1 - bw1, p1.y - h1, p0.x - off0 - bw0, p0.y - h0,
+                 darkenCol(seg.colorL, 0.85));
+
+        // Frente del edificio al inicio del bloque
+        if (prevSeg.buildL == 0) {
+          drawQuad(p0.x - off0, p0.y, p0.x - off0 - bw0, p0.y,
+                   p0.x - off0 - bw0, p0.y - h0, p0.x - off0, p0.y - h0,
+                   seg.colorL);
+          // Ventana iluminada
+          if (h0 > 12 && bw0 > 6)
+            spr.fillRect(p0.x - off0 - bw0 * 3 / 4, p0.y - h0 * 5 / 6,
+                         bw0 / 2, h0 / 4, rgb(255, 255, 180));
+        }
+      }
+
+      // Edificio Derecho (espejo)
+      if (seg.buildR > 0) {
+        int h1 = (int)(p1.scale * seg.buildR);
+        int h0 = (int)(p0.scale * seg.buildR);
+        int off1 = p1.w * 1.5; int off0 = p0.w * 1.5;
+        int bw1 = (int)(p1.scale * 50000);
+        int bw0 = (int)(p0.scale * 50000);
+
+        // Pared lateral
+        drawQuad(p0.x + off0, p0.y, p1.x + off1, p1.y,
+                 p1.x + off1, p1.y - h1, p0.x + off0, p0.y - h0,
+                 darkenCol(seg.colorR, 0.6));
+
+        // Techo
+        drawQuad(p0.x + off0, p0.y - h0, p1.x + off1, p1.y - h1,
+                 p1.x + off1 + bw1, p1.y - h1, p0.x + off0 + bw0, p0.y - h0,
+                 darkenCol(seg.colorR, 0.85));
+
+        // Frente al inicio del bloque
+        if (prevSeg.buildR == 0) {
+          drawQuad(p0.x + off0, p0.y, p0.x + off0 + bw0, p0.y,
+                   p0.x + off0 + bw0, p0.y - h0, p0.x + off0, p0.y - h0,
+                   seg.colorR);
+          if (h0 > 12 && bw0 > 6)
+            spr.fillRect(p0.x + off0 + bw0 / 4, p0.y - h0 * 5 / 6,
+                         bw0 / 2, h0 / 4, rgb(255, 255, 180));
+        }
+      }
+    }
+
+    // --- Sprites normales (árboles, arbustos, rocas) ---
+    if (seg.spriteType >= 0) {
+      int sprX = p1.x + (int)(p1.scale * seg.spriteOffset * ROAD_W * SCR_CX);
+      drawSpriteShape(seg.spriteType, sprX, p1.y, p1.scale, rClip[n]);
+    }
+
+    // --- Tráfico ---
     for (int c = 0; c < MAX_CARS; c++) {
       if (findSegIdx(trafficCars[c].z) != sIdx) continue;
-      int carX = rCache[n].x + (int)(rCache[n].scale * trafficCars[c].offset * ROAD_W * SCR_CX);
-      drawTrafficCar(carX, rCache[n].y, rCache[n].scale, trafficCars[c].color, rClip[n]);
+      int carX = p1.x + (int)(p1.scale * trafficCars[c].offset * ROAD_W * SCR_CX);
+      drawTrafficCar(carX, p1.y, p1.scale, trafficCars[c].color, rClip[n]);
     }
   }
 }
@@ -723,21 +743,20 @@ void drawHUD() {
 }
 
 void handleInput(float dt) {
-  bool left  = digitalRead(BTN_LEFT)  == LOW;
-  bool right = digitalRead(BTN_RIGHT) == LOW;
+  // === MODO DEMO: Auto-piloto ===
+  speed += (maxSpeed / 3.0) * dt;
+  if (speed > maxSpeed * 0.85) speed = maxSpeed * 0.85;
 
-  speed += (maxSpeed / 5.0) * dt;
-  if (speed > maxSpeed) speed = maxSpeed;
+  // Leer la curva actual para anticipar el giro
+  int pSeg = findSegIdx(position + playerZdist);
+  float curCurve = segments[pSeg].curve;
 
-  float steer = dt * 2.0 * (speed / maxSpeed);
-  if (left)  playerX -= steer;
-  if (right) playerX += steer;
+  // Contragirar según la curva + volver al centro
+  float target = -curCurve * 0.12;  // Anticipar la curva
+  float steer = (target - playerX) * 3.0 * dt;
+  playerX += steer;
 
-  if ((playerX < -1.0 || playerX > 1.0) && speed > maxSpeed * 0.25)
-    speed -= (maxSpeed / 2.0) * dt;
-
-  speed   = clampF(speed,   0, maxSpeed);
-  playerX = clampF(playerX, -2.5, 2.5);
+  playerX = clampF(playerX, -0.8, 0.8);
 }
 
 void updatePhysics(float dt) {
