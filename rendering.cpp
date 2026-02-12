@@ -477,6 +477,15 @@ void drawRoad(float position, float playerX, float playerZdist,
     int bandH   = drawBot - drawTop;
     if (bandH <= 0) continue;
 
+    // --- PROYECCIÓN DE ALTURA DEL TECHO (Para Túnel) ---
+    int16_t csy1 = 0, csy2 = 0;
+    if (seg.tunnel) {
+      float ceilH = 5000.0f; 
+      float cyp1 = (p1Y + ceilH) - camY;
+      float cyp2 = (p2Y + ceilH) - camY;
+      csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
+      csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
+    }
     float fogF = expFog((float)n / DRAW_DIST, FOG_DENSITY);
     bool isLight  = ((sIdx / RUMBLE_LEN) % 2) == 0;
     uint16_t grassCol = lerpCol(isLight ? colGrassL : colGrassD, colFog, fogF);
@@ -501,7 +510,14 @@ void drawRoad(float position, float playerX, float playerZdist,
       int rmL = rdL - rw, rmR = rdR + rw;
 
       int e1 = max(0, min(rmL, SCR_W));
-      if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
+      if (seg.tunnel) {
+        // En túnel: dibujar paredes en lugar de césped
+        bool isLightSeg = ((sIdx / 3) % 2) == 0;
+        uint16_t tunnelWallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
+        if (e1 > 0) spr.fillRect(0, subTop, e1, subH, tunnelWallCol);
+      } else {
+        if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
+      }
 
       int a2 = max(0, rmL), b2 = max(0, min(rdL, SCR_W));
       if (b2 > a2) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
@@ -513,71 +529,53 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (b4 > a4) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
 
       int s5 = max(0, min(rmR, SCR_W));
-      if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
-
-      // --- PAREDES LATERALES DEL TÚNEL (Dentro del loop de scanlines para precisión) ---
       if (seg.tunnel) {
-         bool isLight = ((sIdx / 3) % 2) == 0;
-         uint16_t wallCol = isLight ? rgb(70, 70, 75) : rgb(40, 40, 45);
-         // Tapar césped con pared
-         if (e1 > 0) spr.fillRect(0, subTop, e1, subH, wallCol); // Pared Izq
-         if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, wallCol); // Pared Der
+        // En túnel: dibujar paredes en lugar de césped
+        bool isLightSeg = ((sIdx / 3) % 2) == 0;
+        uint16_t tunnelWallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
+        if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, tunnelWallCol);
+      } else {
+        if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
       }
+    }
 
-    // --- LÓGICA DE TECHO DE TÚNEL (Segmentado) ---
-    if (seg.tunnel) {
-      // Proyectar coordenadas del techo (Altura fija relativa a la carretera)
-      float ceilH = 5000.0f; // Altura del túnel
-      float cyp1 = (p1Y + ceilH) - camY;
-      float cyp2 = (p2Y + ceilH) - camY;
-      
-      // Proyección Y en pantalla (Igual que suelo pero con cyp)
-      int16_t csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
-      int16_t csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
-      
-      // El techo se dibuja "Desde arriba hacia abajo" en pantalla
-      // Para evitar huecos, dibujamos DESDE el ultimo minCeilY hasta csy2
-      // csy2 es el punto MAS LEJANO (o sea, más cerca del horizonte, Y mayor)
-      // minCeilY es el punto HASTA DONDE YA DIBUJAMOS (Y menor)
-      
+    // --- TÚNEL: TECHO Y PAREDES ---
+    if (seg.tunnel && csy2 > minCeilY) {
       int drawTop = minCeilY; 
       int drawBot = min(SCR_CY, (int)csy2);
       
       if (drawBot > drawTop) {
-         // Color base (Gris concreto y gris oscuro)
-         bool isLight = ((sIdx / 3) % 2) == 0;
-         uint16_t ceilCol = isLight ? rgb(80, 80, 85) : rgb(50, 50, 55); 
-         uint16_t wallCol = isLight ? rgb(70, 70, 75) : rgb(40, 40, 45);
+         bool isLightSeg = ((sIdx / 3) % 2) == 0;
+         uint16_t ceilCol = isLightSeg ? rgb(80, 80, 85) : rgb(50, 50, 55);
+         uint16_t wallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
 
-         // 1. TECHO (Cubre todo el ancho)
+         // TECHO
          spr.fillRect(0, drawTop, SCR_W, drawBot - drawTop, ceilCol);
          
-         // 2. PAREDES LATERALES (Oclusión total: del borde de pantalla al borde de la carretera)
-         // Usamos rmL y rmR (bordes exteriores del 'rumble' o arcén) calculados arriba
-         // rmL es el borde izquierdo road, rmR es el derecho.
-         // PERO rmL/rmR son para el segmento 'n' (suelo). El techo usa proyección futura? 
-         // No, ground y walls deben coincidir. Usamos las mismas X.
-         // El road loop dibuja sub-segmentos (interpolados s). Usamos los valores del último sub-segmento?
-         // Simplificación: Usar las X proyectadas del segmento actual (sx1, sw1...)
+         // PAREDES (Conectar suelo a techo)
+         // Calculamos los bordes de la carretera en sy1 (suelo cerca)
+         int roadEdgeL = sx1 - sw1;
+         int roadEdgeR = sx1 + sw1;
          
-         // Recalcular X para la altura del techo/paredes? 
-         // Para simplificar y ganar FPS: Usar rectangulos laterales desde el borde de la carretera HASTA los lados de la pantalla.
-         // Esto tapa cualquier edificio o cielo lateral.
+         // Pared izquierda: del borde izquierdo de pantalla al borde izquierdo de la carretera
+         if (roadEdgeL > 0) {
+           spr.fillRect(0, drawTop, roadEdgeL, drawBot - drawTop, wallCol);
+         }
          
-         // Borde izquierdo de la carretera en este scanline
-         // Interpolamos entre sx1 y sx2 según altura? 
-         // Mejor: Pintar paredes laterales en el MISMO bucle de scanlines (subDiv) donde se pinta el suelo.
-         // Mover lógica de paredes ABAJO al bucle 'subDiv'.
+         // Pared derecha: del borde derecho de la carretera al borde derecho de pantalla
+         if (roadEdgeR < SCR_W) {
+           spr.fillRect(roadEdgeR, drawTop, SCR_W - roadEdgeR, drawBot - drawTop, wallCol);
+         }
          
-         // LUCES TECHO
-         if (isLight) {
-           int cx = (sx1 + sx2) / 2; 
+         // LUZ CENTRAL
+         if (isLightSeg) {
+           int cx = sx1;
            int lightW = max(4, sw1 / 4);
            spr.fillRect(cx - lightW/2, drawTop, lightW, drawBot - drawTop, rgb(255, 255, 180));
          }
          
-         minCeilY = drawBot; 
-      }
+         minCeilY = drawBot;
+       }
     }
 
     if (isLight && sw1 > 15 && bandH > 1) {
@@ -650,7 +648,6 @@ void drawRoad(float position, float playerX, float playerZdist,
       drawTrafficCar(carX, p1.y, p1.scale, trafficCars[c].color, rClip[n]);
     }
   }
-}
 }
 
 
