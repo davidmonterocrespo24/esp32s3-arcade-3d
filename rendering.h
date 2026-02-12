@@ -1,6 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  RENDERIZADO Y DIBUJO
+  RENDERIZADO Y DIBUJO - MÓDULO PRINCIPAL
+  Coordinador de submódulos de renderizado
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -11,6 +12,12 @@
 #include "config.h"
 #include "structs.h"
 
+// Incluir submódulos de renderizado
+#include "render_player.h"
+#include "render_traffic.h"
+#include "render_road.h"
+#include "render_hud.h"
+
 // ═══════════════════════════════════════════════════════════════
 //  VARIABLES GLOBALES DE RENDERIZADO
 // ═══════════════════════════════════════════════════════════════
@@ -20,46 +27,19 @@ extern TFT_eSprite spr;
 // -- PARALLAX BACKGROUND (Estilo Horizon Chase) --
 extern TFT_eSprite bgSpr;
 extern float skyOffset;
+extern bool bgCreated;
 
 extern RenderPt rCache[DRAW_DIST];
 extern int16_t  rClip[DRAW_DIST];
 
 // ═══════════════════════════════════════════════════════════════
-//  FUNCIONES DE DIBUJO
+//  FUNCIONES AUXILIARES
 // ═══════════════════════════════════════════════════════════════
 
-// Dibujar sprites (árboles, arbustos, etc.)
-void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int timeOfDay);
-
-// Dibujar coche de tráfico
-void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY);
-
-// Dibujar coche del jugador
-void drawPlayerCar();
-
-// Inicializar fondo parallax con montañas procedurales
+// Inicializar fondo parallax con skyline procedural
 void initBackground();
 
-// Dibujar el cielo con efecto parallax
-void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset);
-
-// Dibujar un trapecio 3D (quad)
+// Dibujar un trapecio 3D (quad) - función auxiliar
 void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c);
-
-// Dibujar la carretera completa
-void drawRoad(float position, float playerX, float playerZdist,
-              float cameraDepth, int timeOfDay);
-
-// Dibujar el HUD
-void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime);
-
-// Dibujar velocímetro circular estilo Top Gear
-void drawSpeedometer(float speed, float maxSpeed);
-
-// Dibujar pantalla de inicio con carro rotando
-void drawStartScreen(float time);
-
-// Dibujar mensaje de crash
-void drawCrashMessage();
 
 #endif // RENDERING_H

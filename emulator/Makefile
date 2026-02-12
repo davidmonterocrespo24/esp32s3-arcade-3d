@@ -15,6 +15,10 @@ SRCS = main.cpp \
        ../utils.cpp \
        ../track.cpp \
        ../rendering.cpp \
+       ../render_player.cpp \
+       ../render_traffic.cpp \
+       ../render_road.cpp \
+       ../render_hud.cpp \
        ../physics.cpp
 
 # Object files (place them in emulator folder to avoid cluttering parent)

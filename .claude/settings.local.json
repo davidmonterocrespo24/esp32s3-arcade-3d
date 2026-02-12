@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(move car_racing_3d.ino car_game.ino)"
+      "Bash(move car_racing_3d.ino car_game.ino)",
+      "Bash(powershell -Command \"\\(Get-Content ''e:\\\\Hardware\\\\car_game\\\\rendering.cpp''\\).Length\")",
+      "Bash(make clean:*)",
+      "Bash(make)"
     ]
   }
 }
