@@ -82,8 +82,11 @@ void buildTrack() {
 
   // 1. TÚNEL ÚNICO (Solo 1 túnel largo, no múltiples)
   // Posicionado en el segundo tercio de la pista
-  for (int i = 65; i < 95; i++) {  // Solo 30 segmentos (era 60)
+  // EXTENSION: 60 segmentos (mas largo)
+  for (int i = 50; i < 130; i++) { 
     segments[i].tunnel = true;
+    segments[i].buildL = 0; // Sin edificios dentro
+    segments[i].buildR = 0;
   }
 
   // 2. CONSTRUIR LA CIUDAD (Edificios variados estilo Nueva York/Horizon Chase)

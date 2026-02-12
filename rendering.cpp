@@ -254,15 +254,10 @@ void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) 
   int pSegIdx = findSegIdx(position + playerZdist);
 
   // Si estamos en túnel, techo negro con luces
+  // Si estamos en túnel, dibujamos un fondo negro para que las luces/techo resalten mejor
   if (segments[pSegIdx].tunnel) {
-    uint16_t roofCol = rgb(25, 22, 20);
-    spr.fillRect(0, 0, SCR_W, SCR_CY, roofCol);
-    // Luces del túnel
-    for (int i = 0; i < 5; i++) {
-      int lx = 40 + i * 60;
-      spr.fillCircle(lx, SCR_CY - 10, 3, rgb(200, 180, 50));
-      spr.fillCircle(lx, SCR_CY - 10, 1, rgb(255, 255, 150));
-    }
+    spr.fillRect(0, 0, SCR_W, SCR_CY, TFT_BLACK);
+    // Luces eliminadas de aquí, se dibujan mejor en drawRoad
     return;
   }
 
@@ -430,7 +425,8 @@ void drawRoad(float position, float playerX, float playerZdist,
 
   float curveX  = 0;
   float curveDX = -(segments[baseIdx].curve * basePct);
-  int maxy = SCR_H;
+  int maxy = SCR_H; // Horizonte del suelo (sube)
+  int minCeilY = 0; // Horizonte del techo (baja)
 
   for (int n = 0; n < DRAW_DIST; n++) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
@@ -518,6 +514,70 @@ void drawRoad(float position, float playerX, float playerZdist,
 
       int s5 = max(0, min(rmR, SCR_W));
       if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
+
+      // --- PAREDES LATERALES DEL TÚNEL (Dentro del loop de scanlines para precisión) ---
+      if (seg.tunnel) {
+         bool isLight = ((sIdx / 3) % 2) == 0;
+         uint16_t wallCol = isLight ? rgb(70, 70, 75) : rgb(40, 40, 45);
+         // Tapar césped con pared
+         if (e1 > 0) spr.fillRect(0, subTop, e1, subH, wallCol); // Pared Izq
+         if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, wallCol); // Pared Der
+      }
+
+    // --- LÓGICA DE TECHO DE TÚNEL (Segmentado) ---
+    if (seg.tunnel) {
+      // Proyectar coordenadas del techo (Altura fija relativa a la carretera)
+      float ceilH = 5000.0f; // Altura del túnel
+      float cyp1 = (p1Y + ceilH) - camY;
+      float cyp2 = (p2Y + ceilH) - camY;
+      
+      // Proyección Y en pantalla (Igual que suelo pero con cyp)
+      int16_t csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
+      int16_t csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
+      
+      // El techo se dibuja "Desde arriba hacia abajo" en pantalla
+      // Para evitar huecos, dibujamos DESDE el ultimo minCeilY hasta csy2
+      // csy2 es el punto MAS LEJANO (o sea, más cerca del horizonte, Y mayor)
+      // minCeilY es el punto HASTA DONDE YA DIBUJAMOS (Y menor)
+      
+      int drawTop = minCeilY; 
+      int drawBot = min(SCR_CY, (int)csy2);
+      
+      if (drawBot > drawTop) {
+         // Color base (Gris concreto y gris oscuro)
+         bool isLight = ((sIdx / 3) % 2) == 0;
+         uint16_t ceilCol = isLight ? rgb(80, 80, 85) : rgb(50, 50, 55); 
+         uint16_t wallCol = isLight ? rgb(70, 70, 75) : rgb(40, 40, 45);
+
+         // 1. TECHO (Cubre todo el ancho)
+         spr.fillRect(0, drawTop, SCR_W, drawBot - drawTop, ceilCol);
+         
+         // 2. PAREDES LATERALES (Oclusión total: del borde de pantalla al borde de la carretera)
+         // Usamos rmL y rmR (bordes exteriores del 'rumble' o arcén) calculados arriba
+         // rmL es el borde izquierdo road, rmR es el derecho.
+         // PERO rmL/rmR son para el segmento 'n' (suelo). El techo usa proyección futura? 
+         // No, ground y walls deben coincidir. Usamos las mismas X.
+         // El road loop dibuja sub-segmentos (interpolados s). Usamos los valores del último sub-segmento?
+         // Simplificación: Usar las X proyectadas del segmento actual (sx1, sw1...)
+         
+         // Recalcular X para la altura del techo/paredes? 
+         // Para simplificar y ganar FPS: Usar rectangulos laterales desde el borde de la carretera HASTA los lados de la pantalla.
+         // Esto tapa cualquier edificio o cielo lateral.
+         
+         // Borde izquierdo de la carretera en este scanline
+         // Interpolamos entre sx1 y sx2 según altura? 
+         // Mejor: Pintar paredes laterales en el MISMO bucle de scanlines (subDiv) donde se pinta el suelo.
+         // Mover lógica de paredes ABAJO al bucle 'subDiv'.
+         
+         // LUCES TECHO
+         if (isLight) {
+           int cx = (sx1 + sx2) / 2; 
+           int lightW = max(4, sw1 / 4);
+           spr.fillRect(cx - lightW/2, drawTop, lightW, drawBot - drawTop, rgb(255, 255, 180));
+         }
+         
+         minCeilY = drawBot; 
+      }
     }
 
     if (isLight && sw1 > 15 && bandH > 1) {
@@ -535,9 +595,12 @@ void drawRoad(float position, float playerX, float playerZdist,
     maxy = drawTop;
   }
 
-  if (maxy > SCR_CY) {
-    spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
-  }
+
+
+    if (maxy > SCR_CY) {
+      // Relleno de suelo (solo si no es túnel, o si, para evitar huecos)
+       spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
+    }
 
   // --- RENDERIZADO 3D POLIGONAL (DE ATRÁS HACIA ADELANTE) ---
   for (int n = DRAW_DIST - 1; n > 1; n--) {
@@ -551,33 +614,13 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
 
-    // TÚNEL EN 3D
+    // TÚNEL EN 3D (Desactivado el dibujo complejo de paredes, ya cubierto por road loop para FPS)
+    // Solo dibujamos detalles extra si es necesario, pero por ahora CLEAN.
+    /*
     if (seg.tunnel) {
-      int tw1 = p1.w * 1.8;
-      int tw0 = p0.w * 1.8;
-      // Altura del túnel AUMENTADA para llegar al horizonte
-      int th1 = (int)(p1.scale * 80000);
-      int th0 = (int)(p0.scale * 80000);
-
-      uint16_t wCol = (n % 2 == 0) ? rgb(80, 70, 60) : rgb(70, 60, 50);
-      uint16_t rCol = (n % 2 == 0) ? rgb(60, 50, 40) : rgb(50, 40, 30);
-
-      drawQuad(p0.x - tw0, p0.y, p1.x - tw1, p1.y,
-               p1.x - tw1, p1.y - th1, p0.x - tw0, p0.y - th0, wCol);
-      drawQuad(p0.x + tw0, p0.y, p1.x + tw1, p1.y,
-               p1.x + tw1, p1.y - th1, p0.x + tw0, p0.y - th0, wCol);
-      drawQuad(p0.x - tw0, p0.y - th0, p1.x - tw1, p1.y - th1,
-               p1.x + tw1, p1.y - th1, p0.x + tw0, p0.y - th0, rCol);
-
-      if (!prevSeg.tunnel) {
-        int wOut = p0.w * 4;
-        int hOut = (int)(p0.scale * 120000);
-        uint16_t rockCol = rgb(110, 90, 70);
-        spr.fillRect(p0.x - wOut, p0.y - hOut, wOut - tw0, hOut, rockCol);
-        spr.fillRect(p0.x + tw0,  p0.y - hOut, wOut - tw0, hOut, rockCol);
-        spr.fillRect(p0.x - tw0,  p0.y - hOut, tw0 * 2, hOut - th0, rockCol);
-      }
+       // ... código antiguo 3D ...
     }
+    */
 
     // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
     if (!seg.tunnel) {
@@ -608,6 +651,8 @@ void drawRoad(float position, float playerX, float playerZdist,
     }
   }
 }
+}
+
 
 void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime) {
   int kmh = (int)(speed * 300.0 / maxSpeed);
