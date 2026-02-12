@@ -149,26 +149,81 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
 }
 
 void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
-  // AUMENTADO TAMAÑO DE COCHES
-  int w = (int)(scale * 75000);  // Antes 30000 -> 2.5x
-  int h = (int)(scale * 45000);  // Antes 18000 -> 2.5x
-  if (w < 3 || h < 2) return;
-  int bottomY = min(cy, (int)clipY);
-  int topY = bottomY - h;
-  if (topY >= SCR_H || bottomY < 0) return;
+  // Verificación de escala mínima
+  if (scale < 0.002f) return;
+  if (cy >= SCR_H || cy < 0) return;
 
-  spr.fillRect(cx - w / 2, topY, w, h * 2 / 3, col);
-  int rw = w * 2 / 3;
-  spr.fillRect(cx - rw / 2, topY - h / 4, rw, h / 3, darkenCol(col, 0.8));
-  if (h > 6) {
-    int ww = rw - 4;
-    if (ww > 2)
-      spr.fillRect(cx - ww / 2, topY - h / 4 + 1, ww, max(1, h / 5), rgb(150, 200, 255));
+  // --- MOTOR 3D PARA AUTOS DE TRÁFICO ---
+  // Siempre apuntan hacia adelante (hacia el horizonte)
+  float angle = 0; // 0 radianes = mirando hacia +Z (fondo de la pista)
+  float cosA = cos(angle);
+  float sinA = sin(angle);
+
+  // VÉRTICES DEL AUTO (versión simplificada del player)
+  float verts[16][3] = {
+    // --- CHASIS INFERIOR (0-7) ---
+    {-18, 3, -40}, { 18, 3, -40}, { 18, 0,  40}, {-18, 0,  40},
+    {-18, 11, -40}, { 18, 11, -40}, { 20, 10, 40}, {-20, 10, 40},
+
+    // --- CABINA Y VIDRIOS (8-15) ---
+    {-15, 11, -13}, { 15, 11, -13}, { 17, 11, 21}, {-17, 11, 21},
+    {-12, 21,  -4}, { 12, 21,  -4}, { 12, 20, 13}, {-12, 20, 13}
+  };
+
+  float sx[16], sy[16];
+
+  // Usamos directamente la escala que ya viene del sistema de renderizado
+  // Esta escala ya tiene en cuenta la perspectiva de la carretera
+  for (int i = 0; i < 16; i++) {
+    // 1. Rotación sobre el eje Y (aunque angle=0, mantenemos la estructura)
+    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
+    float ry = verts[i][1];
+
+    // 2. Proyección simple: escalar y posicionar
+    // scale ya contiene la perspectiva correcta (cameraDepth / camZ)
+    // Multiplicamos por un factor grande para convertir a píxeles
+    sx[i] = cx + (rx * scale * SCR_CX);
+    sy[i] = cy - (ry * scale * SCR_CY);
   }
-  if (w > 8) {
-    spr.fillRect(cx - w / 2 + 1, topY + 1, 2, max(1, h / 6), TFT_RED);
-    spr.fillRect(cx + w / 2 - 3, topY + 1, 2, max(1, h / 6), TFT_RED);
-  }
+
+  // Backface Culling
+  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t faceCol) {
+    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
+    if (cross > 0) {
+      // Verificar que está dentro del clip
+      float maxY = max(max(sy[v0], sy[v1]), max(sy[v2], sy[v3]));
+      if (maxY > clipY) return;
+      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], faceCol);
+    }
+  };
+
+  // Colores basados en el color del auto
+  uint16_t hoodCol  = col;
+  uint16_t bodyCol  = darkenCol(col, 0.85);
+  uint16_t darkCol  = darkenCol(col, 0.65);
+  uint16_t glassCol = rgb(80, 180, 255);
+  uint16_t grillCol = rgb(30, 30, 30);
+
+  // --- ORDEN DE DIBUJADO (De atrás hacia adelante para este ángulo) ---
+
+  // Traseras primero (están más lejos de la cámara)
+  drawFace(6, 7, 3, 2, darkCol);      // Parachoques Trasero
+  drawFace(14, 15, 11, 10, grillCol); // Vidrio Trasero
+
+  // Laterales y techo
+  drawFace(7, 6, 5, 4, hoodCol);  // Cubierta Superior
+  drawFace(7, 4, 0, 3, bodyCol);  // Lateral Izq
+  drawFace(5, 6, 2, 1, bodyCol);  // Lateral Der
+
+  // Cabina
+  drawFace(15, 14, 13, 12, hoodCol);  // Techo
+  drawFace(13, 14, 10, 9, bodyCol);   // Puerta Der
+  drawFace(15, 12, 8, 11, bodyCol);   // Puerta Izq
+  drawFace(12, 13, 9, 8, glassCol);   // Parabrisas
+
+  // Frente (más cercano a la cámara del jugador)
+  drawFace(0, 1, 2, 3, darkCol);  // Base Chasis
+  drawFace(4, 5, 1, 0, grillCol); // Parrilla Frontal
 }
 
 void drawPlayerCar() {
@@ -478,14 +533,12 @@ void drawRoad(float position, float playerX, float playerZdist,
     if (bandH <= 0) continue;
 
     // --- PROYECCIÓN DE ALTURA DEL TECHO (Para Túnel) ---
-    int16_t csy1 = 0, csy2 = 0;
-    if (seg.tunnel) {
-      float ceilH = 5000.0f; 
-      float cyp1 = (p1Y + ceilH) - camY;
-      float cyp2 = (p2Y + ceilH) - camY;
-      csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
-      csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
-    }
+    float ceilH = 9000.0f; // Altura aumentada
+    float cyp_c1 = (p1Y + ceilH) - camY;
+    float cyp_c2 = (p2Y + ceilH) - camY;
+    int16_t csy1 = SCR_CY - (int)(sc1 * cyp_c1 * SCR_CY);
+    int16_t csy2 = SCR_CY - (int)(sc2 * cyp_c2 * SCR_CY);
+
     float fogF = expFog((float)n / DRAW_DIST, FOG_DENSITY);
     bool isLight  = ((sIdx / RUMBLE_LEN) % 2) == 0;
     uint16_t grassCol = lerpCol(isLight ? colGrassL : colGrassD, colFog, fogF);
@@ -505,78 +558,36 @@ void drawRoad(float position, float playerX, float playerZdist,
       float tMid = (float)(2 * s + 1) / (float)(2 * subDiv);
       int cx  = (int)lerpF(sx2, sx1, tMid);
       int hw  = (int)lerpF(sw2, sw1, tMid);
-      int rw  = max(1, hw / 6);
       int rdL = cx - hw,  rdR = cx + hw;
+
+      // Césped / Paredes Planas (Base)
+      int rw = max(1, hw / 6);
       int rmL = rdL - rw, rmR = rdR + rw;
-
-      // En túnel: solo dibujar carretera y rumble, el resto lo cubren las paredes
-      int e1 = max(0, min(rmL, SCR_W));
-      if (!seg.tunnel && e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
-
-      int a2 = max(0, rmL), b2 = max(0, min(rdL, SCR_W));
-      if (b2 > a2) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
-
-      int a3 = max(0, rdL), b3 = min(SCR_W, rdR);
-      if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
-
-      int a4 = max(0, rdR), b4 = min(SCR_W, rmR);
-      if (b4 > a4 && !seg.tunnel) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
-
-      if (!seg.tunnel) {
+      
+      if (seg.tunnel) {
+        // En el loop de suelo del túnel, solo dibujamos la base de las paredes
+        if (rdL > 0) spr.fillRect(0, subTop, rdL, subH, grass);
+        if (rdR < SCR_W) spr.fillRect(rdR, subTop, SCR_W - rdR, subH, grass);
+      } else {
+        int s1 = max(0, min(rmL, SCR_W));
+        if (s1 > 0) spr.fillRect(0, subTop, s1, subH, grass);
         int s5 = max(0, min(rmR, SCR_W));
         if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
+        
+        int a2 = max(0, rmL), b2 = max(0, min(rdL, SCR_W));
+        if (b2 > a2) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
+        int a4 = max(0, rdR), b4 = min(SCR_W, rmR);
+        if (b4 > a4) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
       }
+
+      // Siempre carretera
+      int a3 = max(0, rdL), b3 = min(SCR_W, rdR);
+      if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
     }
 
-    // --- TÚNEL: TECHO Y PAREDES PERSPECTIVA ---
-    if (seg.tunnel) {
-      bool isLightSeg = ((sIdx / 3) % 2) == 0;
-      uint16_t ceilCol = isLightSeg ? rgb(70, 70, 75) : rgb(40, 40, 45);
-      uint16_t wallCol = isLightSeg ? rgb(95, 95, 100) : rgb(65, 65, 70);
-
-      // PARED IZQUIERDA (Perspectiva real: Conecta borde pantalla/techo con borde carretera/suelo)
-      drawQuad(
-        0, csy1,            // Arriba Izquierda Cerca
-        sx1-sw1, sy1,       // Abajo Izquierda Cerca (carretera)
-        sx2-sw2, sy2,       // Abajo Izquierda Lejos (carretera)
-        0, csy2,            // Arriba Izquierda Lejos
-        wallCol
-      );
-
-      // PARED DERECHA
-      drawQuad(
-        sx1+sw1, sy1,       // Abajo Derecha Cerca
-        SCR_W, csy1,        // Arriba Derecha Cerca
-        SCR_W, csy2,        // Arriba Derecha Lejos
-        sx2+sw2, sy2,       // Abajo Derecha Lejos
-        wallCol
-      );
-
-      // RELLENO EXTRA SUPERIOR (Para no dejar huecos al techo)
-      if (csy1 > 0) spr.fillRect(0, 0, SCR_W, csy1, wallCol);
-
-      // TECHO
-      if (csy2 > minCeilY) {
-        int tTop = minCeilY; 
-        int tBot = min(SCR_CY, (int)csy2);
-        
-        if (tBot > tTop) {
-           spr.fillRect(0, tTop, SCR_W, tBot - tTop, ceilCol);
-           
-           // LUZ CENTRAL
-           if (isLightSeg) {
-             int cx = sx1;
-             int lightW = max(4, sw1 / 4);
-             spr.fillRect(cx - lightW/2, tTop, lightW, tBot - tTop, rgb(255, 255, 180));
-           }
-           minCeilY = tBot;
-         }
-      }
-      
-      // Bloqueo de salida (Cap negro al final del túnel para no ver el cielo)
-      if (n == DRAW_DIST - 1) {
-        spr.fillRect(0, 0, SCR_W, sy2, rgb(0,0,0));
-      }
+    // --- SALIDA DEL TÚNEL (Cierre negro si es el final) ---
+    if (seg.tunnel && (n == DRAW_DIST - 1 || (n < DRAW_DIST - 1 && !segments[(sIdx + 1) % TOTAL_SEGS].tunnel))) {
+       spr.fillRect(0, 0, SCR_W, (int)sy2, rgb(0,0,0));
     }
 
     if (isLight && sw1 > 15 && bandH > 1) {
@@ -613,13 +624,32 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
 
-    // TÚNEL EN 3D (Desactivado el dibujo complejo de paredes, ya cubierto por road loop para FPS)
-    // Solo dibujamos detalles extra si es necesario, pero por ahora CLEAN.
-    /*
+    // TÚNEL EN 3D (BACK-TO-FRONT)
     if (seg.tunnel) {
-       // ... código antiguo 3D ...
+       bool isLightT = ((sIdx / 3) % 2) == 0;
+       uint16_t wallT = isLightT ? rgb(120, 120, 125) : rgb(90, 90, 95);
+       uint16_t ceilT = isLightT ? rgb(80, 80, 85) : rgb(50, 50, 55);
+       
+       float cH = 15000.0f;
+       int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
+       int cy0 = SCR_CY - (int)(p0.scale * (prevSeg.y + cH - camY) * SCR_CY);
+
+       // 1. Pared Izquierda (Trapecio diagonal)
+       // Conecta borde pantalla (x=0) con borde carretera
+       drawQuad(0, cy0, p0.x - p0.w, p0.y, p1.x - p1.w, p1.y, 0, cy1, wallT);
+
+       // 2. Pared Derecha
+       drawQuad(p0.x + p0.w, p0.y, SCR_W, cy0, SCR_W, cy1, p1.x + p1.w, p1.y, wallT);
+
+       // 3. Techo
+       drawQuad(0, 0, SCR_W, 0, SCR_W, cy1, 0, cy1, ceilT);
+       if (cy1 > cy0) spr.fillRect(0, cy0, SCR_W, cy1 - cy0, ceilT);
+
+       // 4. Salida
+       if (n == DRAW_DIST - 1 || !segments[(sIdx + 1) % TOTAL_SEGS].tunnel) {
+          spr.fillRect(0, 0, SCR_W, p1.y, rgb(0,0,0));
+       }
     }
-    */
 
     // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
     if (!seg.tunnel) {
