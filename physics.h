@@ -27,6 +27,11 @@ extern float prevPosition;
 extern int currentLap;
 extern int totalLaps;
 
+// Variables de física avanzada
+extern float velocityX;        // Velocidad lateral (para derrape)
+extern float acceleration;     // Aceleración actual
+extern float driftAngle;       // Ángulo de derrape
+
 // ═══════════════════════════════════════════════════════════════
 //  FUNCIONES DE FÍSICA
 // ═══════════════════════════════════════════════════════════════

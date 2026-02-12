@@ -32,6 +32,11 @@ float prevPosition   = 0;
 int currentLap       = 1;
 int totalLaps        = 3;
 
+// Variables de física avanzada
+float velocityX      = 0;     // Velocidad lateral (para derrape)
+float acceleration   = 0;     // Aceleración actual
+float driftAngle     = 0;     // Ángulo de derrape
+
 // ═══════════════════════════════════════════════════════════════
 //  IMPLEMENTACIÓN
 // ═══════════════════════════════════════════════════════════════
@@ -50,12 +55,28 @@ void initPhysics() {
   lastLapTime    = 0;
   bestLapTime    = 0;
   prevPosition   = 0;
+
+  // Inicializar física avanzada
+  velocityX    = 0;
+  acceleration = 0;
+  driftAngle   = 0;
 }
 
 void handleInput(float dt) {
-  // === MODO DEMO: Auto-piloto ===
-  speed += (maxSpeed / 3.0) * dt;
-  if (speed > maxSpeed * 0.85) speed = maxSpeed * 0.85;
+  // === MODO DEMO: Auto-piloto con aceleración progresiva ===
+
+  // Aceleración progresiva (no instantánea)
+  float targetAccel = maxSpeed * 2.0f;  // Aceleración objetivo
+  float accelSpeed = 500.0f;            // Qué tan rápido acelera
+
+  if (speed < maxSpeed * 0.85f) {
+    // Aplicar aceleración gradualmente
+    acceleration += accelSpeed * dt;
+    if (acceleration > targetAccel) acceleration = targetAccel;
+  } else {
+    // Cerca de velocidad máxima, reducir aceleración
+    acceleration *= 0.95f;
+  }
 
   // Leer la curva actual para anticipar el giro
   int pSeg = findSegIdx(position + playerZdist);
@@ -71,9 +92,55 @@ void handleInput(float dt) {
 
 void updatePhysics(float dt) {
   int pSeg = findSegIdx(position + playerZdist);
+  int prevSegIdx = (pSeg - 1 + TOTAL_SEGS) % TOTAL_SEGS;
+
   float spPct = speed / maxSpeed;
+
+  // === GRAVEDAD: Efecto de pendientes (subidas/bajadas) ===
+  float currentY = segments[pSeg].y;
+  float prevY = segments[prevSegIdx].y;
+  float slope = (currentY - prevY) / SEG_LEN;  // Pendiente del terreno
+
+  // Subiendo = más lento, bajando = más rápido
+  float gravityEffect = -slope * 800.0f;  // Factor de gravedad
+  acceleration += gravityEffect * dt;
+
+  // === ACELERACIÓN CON FRICCIÓN ===
+  // Fricción del aire y del suelo
+  float friction = 0.98f;  // Fricción constante
+  speed *= friction;
+
+  // Aplicar aceleración a la velocidad
+  speed += acceleration * dt;
+
+  // Limitar velocidad
+  if (speed > maxSpeed) speed = maxSpeed;
+  if (speed < 0) speed = 0;
+
+  // === DERRAPE: Física lateral en curvas ===
+  float curveForce = segments[pSeg].curve * centrifugal * spPct;
+
+  // Velocidad lateral aumenta con la fuerza de la curva
+  velocityX += curveForce * dt * 5.0f;
+
+  // Fricción lateral (el auto intenta volver al centro)
+  velocityX *= 0.85f;
+
+  // Aplicar velocidad lateral a la posición
+  playerX -= velocityX * dt;
+
+  // También aplicar el empuje de la curva (centrífugo)
   float steerDx = dt * 2.0 * spPct;
   playerX -= steerDx * spPct * segments[pSeg].curve * centrifugal;
+
+  // === ÁNGULO DE DERRAPE VISUAL ===
+  // Calcular ángulo basado en velocidad lateral y velocidad forward
+  if (speed > 0.1f) {
+    driftAngle = atan2f(velocityX * 10.0f, speed / maxSpeed) * 0.5f;
+    driftAngle = clampF(driftAngle, -0.5f, 0.5f);
+  } else {
+    driftAngle *= 0.9f;  // Reducir ángulo gradualmente
+  }
 
   prevPosition = position;
   position = loopIncrease(position, dt * speed, trackLength);
