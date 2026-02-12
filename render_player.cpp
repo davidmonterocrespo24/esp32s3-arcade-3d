@@ -21,25 +21,32 @@ void drawPlayerCar() {
   float sinA = sin(angle);
 
   // VÉRTICES MODIFICADOS: Se aumentó el valor Y de la parte delantera (Z = -58)
-  float verts[16][3] = {
+  float verts[28][3] = {
     // --- CHASIS INFERIOR (0-7) ---
     {-26, 4, -58}, { 26, 4, -58}, { 26, 0,  58}, {-26, 0,  58}, // Frente levantado a Y=4
     {-26, 16, -58}, { 26, 16, -58}, { 28, 14, 58}, {-28, 14, 58}, // Capó a Y=16, maletero a Y=14
 
     // --- CABINA Y VIDRIOS (8-15) ---
     {-22, 16, -18}, { 22, 16, -18}, { 24, 15, 30}, {-24, 15, 30}, // Base de los vidrios
-    {-17, 30,  -5}, { 17, 30,  -5}, { 17, 28, 18}, {-17, 28, 18}  // Techo levemente inclinado
+    {-17, 30,  -5}, { 17, 30,  -5}, { 17, 28, 18}, {-17, 28, 18}, // Techo levemente inclinado
+
+    // --- ALERÓN TRASERO REDISEÑADO (16-27) ---
+    // Postes de soporte (menos altos)
+    {-30, 16, 50}, {-26, 16, 50}, {-26, 22, 50}, {-30, 22, 50}, // 16-19: Poste izquierdo
+    { 26, 16, 50}, { 30, 16, 50}, { 30, 22, 50}, { 26, 22, 50}, // 20-23: Poste derecho
+    // Placa horizontal del alerón (más baja)
+    {-34, 22, 48}, { 34, 22, 48}, { 34, 26, 48}, {-34, 26, 48}  // 24-27: Superficie del alerón
   };
 
-  float sx[16], sy[16];
+  float sx[28], sy[28];
 
   // Proyección
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 28; i++) {
     float rx = verts[i][0] * cosA - verts[i][2] * sinA;
     float ry = verts[i][1];
     float rz = verts[i][0] * sinA + verts[i][2] * cosA;
 
-    float pitch = -0.15f;
+    float pitch = -0.25f; // Inclinación más pronunciada hacia arriba
     float camY = ry * cos(pitch) - rz * sin(pitch);
     float camZ = ry * sin(pitch) + rz * cos(pitch);
 
@@ -85,6 +92,28 @@ void drawPlayerCar() {
   // 4. Traseras (Lo que está más pegado a la cámara)
   drawFace(14, 15, 11, 10, grillCol); // Vidrio Trasero
   drawFace(6, 7, 3, 2, darkRed);      // Parachoques Trasero
+
+  // 5. ALERÓN TRASERO MEJORADO (Más visible y robusto)
+  uint16_t spoilerCol = rgb(30, 30, 30);   // Negro mate para la placa
+  uint16_t spoilerDark = rgb(15, 15, 15);  // Negro más oscuro para sombras
+
+  // POSTES DE SOPORTE
+  // Poste izquierdo (6 caras para máxima visibilidad)
+  drawFace(16, 17, 18, 19, darkRed);      // Cara frontal del poste izq
+  drawFace(17, 18, 22, 21, bodyRed);      // Cara interior del poste izq
+  drawFace(19, 18, 22, 23, bodyRed);      // Cara superior del poste izq
+
+  // Poste derecho
+  drawFace(20, 21, 22, 23, darkRed);      // Cara frontal del poste der
+  drawFace(20, 21, 17, 16, bodyRed);      // Cara interior del poste der
+  drawFace(22, 23, 19, 18, bodyRed);      // Cara superior del poste der
+
+  // PLACA DEL ALERÓN (Superficie grande y visible)
+  drawFace(24, 25, 26, 27, spoilerCol);   // Superficie superior (negro mate)
+  drawFace(27, 26, 25, 24, spoilerDark);  // Superficie inferior (más oscura)
+  drawFace(24, 25, 21, 17, darkRed);      // Borde frontal
+  drawFace(27, 24, 16, 19, bodyRed);      // Borde lateral izquierdo
+  drawFace(25, 26, 22, 21, bodyRed);      // Borde lateral derecho
 }
 
 void drawStartScreen(float time) {
@@ -121,21 +150,28 @@ void drawStartScreen(float time) {
   float cosA = cos(angle);
   float sinA = sin(angle);
 
-  // Esculpimos el coche: 16 Vértices {X (Ancho), Y (Alto), Z (Largo)}
-  float verts[16][3] = {
+  // Esculpimos el coche: 28 Vértices {X (Ancho), Y (Alto), Z (Largo)}
+  float verts[28][3] = {
     // --- CHASIS INFERIOR (0-7) ---
     {-22, 0, -48}, { 22, 0, -48}, { 22, 0,  48}, {-22, 0,  48}, // 0-3: Base pegada al piso
     {-22, 8, -48}, { 22, 8, -48}, { 24, 14, 48}, {-24, 14, 48}, // 4-7: Capó inclinado hacia abajo y maletero
 
     // --- CABINA Y VIDRIOS (8-15) ---
     {-18, 10, -15}, { 18, 10, -15}, { 20, 14, 25}, {-20, 14, 25}, // 8-11: Base de los vidrios
-    {-14, 24,  0},  { 14, 24,  0},  { 14, 22, 15}, {-14, 22, 15}  // 12-15: Techo de la cabina
+    {-14, 24,  0},  { 14, 24,  0},  { 14, 22, 15}, {-14, 22, 15}, // 12-15: Techo de la cabina
+
+    // --- ALERÓN TRASERO REDISEÑADO (16-27) ---
+    // Postes de soporte (menos altos)
+    {-26, 14, 44}, {-22, 14, 44}, {-22, 20, 44}, {-26, 20, 44}, // 16-19: Poste izquierdo
+    { 22, 14, 44}, { 26, 14, 44}, { 26, 20, 44}, { 22, 20, 44}, // 20-23: Poste derecho
+    // Placa horizontal del alerón (más baja)
+    {-30, 20, 42}, { 30, 20, 42}, { 30, 24, 42}, {-30, 24, 42}  // 24-27: Superficie del alerón
   };
 
-  float sx[16], sy[16];
+  float sx[28], sy[28];
 
   // Matemáticas de Proyección
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 28; i++) {
     // 1. Rotación sobre el eje Y (Giro del auto)
     float rx = verts[i][0] * cosA - verts[i][2] * sinA;
     float ry = verts[i][1];
@@ -185,6 +221,28 @@ void drawStartScreen(float time) {
   drawFace(14, 15, 11, 10, grillCol); // Vidrio trasero
   drawFace(12, 13, 9, 8, glassCol);   // Parabrisas frontal azul
   drawFace(15, 14, 13, 12, hoodRed);  // Techo rojo
+
+  // 3. ALERÓN TRASERO MEJORADO (Más visible y robusto)
+  uint16_t spoilerCol = rgb(30, 30, 30);   // Negro mate para la placa
+  uint16_t spoilerDark = rgb(15, 15, 15);  // Negro más oscuro para sombras
+
+  // POSTES DE SOPORTE
+  // Poste izquierdo (múltiples caras para máxima visibilidad)
+  drawFace(16, 17, 18, 19, darkRed);      // Cara frontal del poste izq
+  drawFace(17, 18, 22, 21, bodyRed);      // Cara interior del poste izq
+  drawFace(19, 18, 22, 23, bodyRed);      // Cara superior del poste izq
+
+  // Poste derecho
+  drawFace(20, 21, 22, 23, darkRed);      // Cara frontal del poste der
+  drawFace(20, 21, 17, 16, bodyRed);      // Cara interior del poste der
+  drawFace(22, 23, 19, 18, bodyRed);      // Cara superior del poste der
+
+  // PLACA DEL ALERÓN (Superficie grande y visible)
+  drawFace(24, 25, 26, 27, spoilerCol);   // Superficie superior (negro mate)
+  drawFace(27, 26, 25, 24, spoilerDark);  // Superficie inferior (más oscura)
+  drawFace(24, 25, 21, 17, darkRed);      // Borde frontal
+  drawFace(27, 24, 16, 19, bodyRed);      // Borde lateral izquierdo
+  drawFace(25, 26, 22, 21, bodyRed);      // Borde lateral derecho
 
   spr.pushSprite(0, 0);
 }

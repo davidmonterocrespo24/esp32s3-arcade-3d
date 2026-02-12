@@ -76,9 +76,9 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
 void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) {
   int pSegIdx = findSegIdx(position + playerZdist);
 
-  // Si estamos en túnel, dibujamos un fondo negro para que las luces/techo resalten mejor
+  // Si estamos en túnel, NO dibujar nada aquí - el techo se dibuja en el loop 3D
   if (segments[pSegIdx].tunnel) {
-    spr.fillRect(0, 0, SCR_W, SCR_CY, TFT_BLACK);
+    // Dejar vacío para que el techo 3D sea visible
     return;
   }
 
@@ -346,10 +346,7 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
     }
 
-    // --- SALIDA DEL TÚNEL (Cierre negro si es el final) ---
-    if (seg.tunnel && (n == DRAW_DIST - 1 || (n < DRAW_DIST - 1 && !segments[(sIdx + 1) % TOTAL_SEGS].tunnel))) {
-       spr.fillRect(0, 0, SCR_W, (int)sy2, rgb(0,0,0));
-    }
+    // --- SALIDA DEL TÚNEL removida de aquí, se dibuja en el segundo loop 3D ---
 
     if (isLight && sw1 > 15 && bandH > 1) {
       int midX = (sx1 + sx2) / 2;
@@ -386,27 +383,45 @@ void drawRoad(float position, float playerX, float playerZdist,
     // TÚNEL EN 3D (BACK-TO-FRONT)
     if (seg.tunnel) {
        bool isLightT = ((sIdx / 3) % 2) == 0;
-       uint16_t wallT = isLightT ? rgb(120, 120, 125) : rgb(90, 90, 95);
-       uint16_t ceilT = isLightT ? rgb(80, 80, 85) : rgb(50, 50, 55);
+       // Colores más visibles para debug: azul para paredes, rojo para techo
+       uint16_t wallT = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);  // Azul
+       uint16_t ceilT = isLightT ? rgb(200, 80, 80) : rgb(150, 50, 50);   // Rojo
 
        float cH = 15000.0f;
        int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
        int cy0 = SCR_CY - (int)(p0.scale * (prevSeg.y + cH - camY) * SCR_CY);
 
-       // 1. Pared Izquierda (Trapecio diagonal)
-       // Conecta borde pantalla (x=0) con borde carretera
-       drawQuad(0, cy0, p0.x - p0.w, p0.y, p1.x - p1.w, p1.y, 0, cy1, wallT);
+       // El techo tiene las MISMAS dimensiones que la carretera
+       // Bordes de la carretera (suelo)
+       int roadL0 = p0.x - p0.w;  // Borde izquierdo carretera cerca
+       int roadR0 = p0.x + p0.w;  // Borde derecho carretera cerca
+       int roadL1 = p1.x - p1.w;  // Borde izquierdo carretera lejos
+       int roadR1 = p1.x + p1.w;  // Borde derecho carretera lejos
 
-       // 2. Pared Derecha
-       drawQuad(p0.x + p0.w, p0.y, SCR_W, cy0, SCR_W, cy1, p1.x + p1.w, p1.y, wallT);
+       // Bordes del techo (mismas coordenadas X que la carretera)
+       int ceilL0 = roadL0;  // Borde izquierdo techo cerca
+       int ceilR0 = roadR0;  // Borde derecho techo cerca
+       int ceilL1 = roadL1;  // Borde izquierdo techo lejos
+       int ceilR1 = roadR1;  // Borde derecho techo lejos
 
-       // 3. Techo
-       drawQuad(0, 0, SCR_W, 0, SCR_W, cy1, 0, cy1, ceilT);
-       if (cy1 > cy0) spr.fillRect(0, cy0, SCR_W, cy1 - cy0, ceilT);
+       // 1. Pared Izquierda VERTICAL (90° con respecto a la carretera)
+       // Conecta borde izquierdo de carretera con borde izquierdo del techo
+       drawQuad(roadL0, p0.y, roadL1, p1.y, ceilL1, cy1, ceilL0, cy0, wallT);
 
-       // 4. Salida
+       // 2. Pared Derecha VERTICAL (90° con respecto a la carretera)
+       // Conecta borde derecho de carretera con borde derecho del techo
+       drawQuad(roadR0, p0.y, ceilR0, cy0, ceilR1, cy1, roadR1, p1.y, wallT);
+
+       // 3. Techo (misma proyección y dimensiones que la carretera)
+       drawQuad(ceilL0, cy0, ceilR0, cy0, ceilR1, cy1, ceilL1, cy1, ceilT);
+
+       // 4. Salida del túnel (solo dibujar si es el último segmento visible o siguiente no es túnel)
        if (n == DRAW_DIST - 1 || !segments[(sIdx + 1) % TOTAL_SEGS].tunnel) {
-          spr.fillRect(0, 0, SCR_W, p1.y, rgb(0,0,0));
+          // Dibujar apertura negra más pequeña que no cubra todo
+          int exitY = min((int)p1.y, SCR_CY);
+          if (exitY > 0) {
+            spr.fillRect(0, 0, SCR_W, exitY, rgb(0,0,0));
+          }
        }
     }
 
