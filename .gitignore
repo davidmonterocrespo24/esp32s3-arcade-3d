@@ -1,4 +1,3 @@
 .history/*
 emulator/car_game_emu.exe
 *.o
-emulator/TFT_eSPI.o

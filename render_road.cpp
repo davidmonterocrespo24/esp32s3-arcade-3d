@@ -454,11 +454,11 @@ void drawRoad(float position, float playerX, float playerZdist,
         int wallDrawBot = subBot;
         int wallH = wallDrawBot - wallDrawTop;
 
-        if (wallH > 0) {
+        if (wallH > 0 && !seg.tunnel) {
           if (rdL > 0) spr.fillRect(0, wallDrawTop, rdL, wallH, grass);
           if (rdR < SCR_W) spr.fillRect(rdR, wallDrawTop, SCR_W - rdR, wallH, grass);
         }
-      } else {
+      } else if (!seg.tunnel) {
         int s1 = max(0, min(rmL, SCR_W));
         if (s1 > 0) spr.fillRect(0, subTop, s1, subH, grass);
         int s5 = max(0, min(rmR, SCR_W));
