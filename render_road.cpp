@@ -293,13 +293,6 @@ void drawRoad(float position, float playerX, float playerZdist,
     int bandH   = drawBot - drawTop;
     if (bandH <= 0) continue;
 
-    // --- PROYECCIÓN DE ALTURA DEL TECHO (Para Túnel) ---
-    float ceilH = 9000.0f; // Altura aumentada
-    float cyp_c1 = (p1Y + ceilH) - camY;
-    float cyp_c2 = (p2Y + ceilH) - camY;
-    int16_t csy1 = SCR_CY - (int)(sc1 * cyp_c1 * SCR_CY);
-    int16_t csy2 = SCR_CY - (int)(sc2 * cyp_c2 * SCR_CY);
-
     float fogF = expFog((float)n / DRAW_DIST, FOG_DENSITY);
     bool isLight  = ((sIdx / RUMBLE_LEN) % 2) == 0;
     uint16_t grassCol = lerpCol(isLight ? colGrassL : colGrassD, colFog, fogF);
@@ -309,18 +302,23 @@ void drawRoad(float position, float playerX, float playerZdist,
     uint16_t rumble = lerpCol(isLight ? colRumbleL : colRumbleD, colFog, seg.tunnel ? 0 : fogF);
     uint16_t lane   = lerpCol(colLane, colFog, seg.tunnel ? 0 : fogF);
 
-    // --- TECHO DEL TÚNEL (ESPEJO DE LA CARRETERA) ---
+    // --- TECHO DEL TÚNEL (Mismo cálculo que las paredes para alineación) ---
     if (seg.tunnel) {
-      // El techo se dibuja como espejo de la carretera
-      // Usar csy1 y csy2 que ya fueron calculados en líneas 300-301
+      // Usar la MISMA altura que las paredes del túnel
+      float ceilHeight = 9000.0f;
+
+      // Calcular coordenadas Y del techo (igual que en las paredes, líneas 366-368)
+      float cyp1 = (p1Y + ceilHeight) - camY;
+      float cyp2 = (p2Y + ceilHeight) - camY;
+      int16_t csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
+      int16_t csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
+
       int ceilDrawTop = max((int)csy2, 0);
       int ceilDrawBot = min((int)csy1, SCR_CY);
       int ceilBandH = ceilDrawBot - ceilDrawTop;
 
       if (ceilBandH > 0) {
         int ceilSubDiv = (ceilBandH > 6) ? min(3, ceilBandH / 3) : 1;
-        bool isLightCeil = ((sIdx / RUMBLE_LEN) % 2) == 0;
-        uint16_t ceilCol = lerpCol(isLightCeil ? colRoadL : colRoadD, colFog, 0);
 
         for (int s = 0; s < ceilSubDiv; s++) {
           int ceilSubTop = ceilDrawTop + s * ceilBandH / ceilSubDiv;
@@ -328,6 +326,7 @@ void drawRoad(float position, float playerX, float playerZdist,
           int ceilSubH = ceilSubBot - ceilSubTop;
           if (ceilSubH <= 0) continue;
 
+          // MISMA interpolación que la carretera
           float tMid = (float)(2 * s + 1) / (float)(2 * ceilSubDiv);
           int cx = (int)lerpF(sx2, sx1, tMid);
           int hw = (int)lerpF(sw2, sw1, tMid);
@@ -335,7 +334,7 @@ void drawRoad(float position, float playerX, float playerZdist,
 
           // Dibujar techo (mismo color que carretera)
           int a3 = max(0, ceilL), b3 = min(SCR_W, ceilR);
-          if (b3 > a3) spr.fillRect(a3, ceilSubTop, b3 - a3, ceilSubH, ceilCol);
+          if (b3 > a3) spr.fillRect(a3, ceilSubTop, b3 - a3, ceilSubH, road);
         }
       }
     }
@@ -449,9 +448,16 @@ void drawRoad(float position, float playerX, float playerZdist,
       int rmL = rdL - rw, rmR = rdR + rw;
 
       if (seg.tunnel) {
-        // En el loop de suelo del túnel, solo dibujamos la base de las paredes
-        if (rdL > 0) spr.fillRect(0, subTop, rdL, subH, grass);
-        if (rdR < SCR_W) spr.fillRect(rdR, subTop, SCR_W - rdR, subH, grass);
+        // En el túnel: NO dibujar paredes en la zona del techo (arriba de SCR_CY)
+        // Solo dibujar las paredes en la zona inferior (desde SCR_CY hacia abajo)
+        int wallDrawTop = max(subTop, SCR_CY);
+        int wallDrawBot = subBot;
+        int wallH = wallDrawBot - wallDrawTop;
+
+        if (wallH > 0) {
+          if (rdL > 0) spr.fillRect(0, wallDrawTop, rdL, wallH, grass);
+          if (rdR < SCR_W) spr.fillRect(rdR, wallDrawTop, SCR_W - rdR, wallH, grass);
+        }
       } else {
         int s1 = max(0, min(rmL, SCR_W));
         if (s1 > 0) spr.fillRect(0, subTop, s1, subH, grass);
