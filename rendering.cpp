@@ -172,26 +172,25 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
 }
 
 void drawPlayerCar() {
-  // --- SOMBRA ---
   int carCenterX = SCR_CX;
   int carCenterY = SCR_H - 15; 
   
-  spr.fillEllipse(carCenterX, carCenterY + 4, 60, 16, rgb(15, 15, 15)); 
+  // ¡Elipse de sombra eliminada!
 
   // --- MOTOR 3D ---
   float angle = (-playerX * 0.2) + PI; // +PI para ver la parte trasera
   float cosA = cos(angle);
   float sinA = sin(angle);
 
-  // VÉRTICES CORREGIDOS: Maletero y capó ahora están nivelados para evitar el efecto de caída
+  // VÉRTICES MODIFICADOS: Se aumentó el valor Y de la parte delantera (Z = -58)
   float verts[16][3] = {
     // --- CHASIS INFERIOR (0-7) ---
-    {-26, 0, -58}, { 26, 0, -58}, { 26, 0,  58}, {-26, 0,  58}, // Base
-    {-26, 12, -58}, { 26, 12, -58}, { 28, 14, 58}, {-28, 14, 58}, // Capó (Y=12) y Maletero (Y=14)
+    {-26, 4, -58}, { 26, 4, -58}, { 26, 0,  58}, {-26, 0,  58}, // Frente levantado a Y=4
+    {-26, 16, -58}, { 26, 16, -58}, { 28, 14, 58}, {-28, 14, 58}, // Capó a Y=16, maletero a Y=14
 
     // --- CABINA Y VIDRIOS (8-15) ---
-    {-22, 12, -18}, { 22, 12, -18}, { 24, 15, 30}, {-24, 15, 30}, // Base de los vidrios
-    {-17, 28,  -5}, { 17, 28,  -5}, { 17, 26, 18}, {-17, 26, 18}  // Techo nivelado
+    {-22, 16, -18}, { 22, 16, -18}, { 24, 15, 30}, {-24, 15, 30}, // Base de los vidrios
+    {-17, 30,  -5}, { 17, 30,  -5}, { 17, 28, 18}, {-17, 28, 18}  // Techo levemente inclinado
   };
 
   float sx[16], sy[16];
@@ -202,8 +201,6 @@ void drawPlayerCar() {
     float ry = verts[i][1];
     float rz = verts[i][0] * sinA + verts[i][2] * cosA;
 
-    // MAGIA AQUI: Pitch NEGATIVO (-0.15). Esto eleva el frente del coche 
-    // y nos da la perspectiva clásica de OutRun (mirando un poco desde arriba)
     float pitch = -0.15f; 
     float camY = ry * cos(pitch) - rz * sin(pitch);
     float camZ = ry * sin(pitch) + rz * cos(pitch);
