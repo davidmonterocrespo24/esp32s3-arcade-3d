@@ -147,7 +147,9 @@ void TFT_eSprite::fillTriangle(int32_t x0, int32_t y0, int32_t x1, int32_t y1, i
     SpriteData* sd = (SpriteData*)texture;
     if (!sd->created) return;
     BeginTextureMode(sd->texture);
+    // Draw twice to handle both winding orders (Raylib culls CW by default in some versions/contexts)
     DrawTriangle((Vector2){(float)x0, (float)y0}, (Vector2){(float)x1, (float)y1}, (Vector2){(float)x2, (float)y2}, r565(color));
+    DrawTriangle((Vector2){(float)x0, (float)y0}, (Vector2){(float)x2, (float)y2}, (Vector2){(float)x1, (float)y1}, r565(color));
     EndTextureMode();
 }
 
