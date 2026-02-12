@@ -309,17 +309,140 @@ void drawRoad(float position, float playerX, float playerZdist,
     uint16_t rumble = lerpCol(isLight ? colRumbleL : colRumbleD, colFog, seg.tunnel ? 0 : fogF);
     uint16_t lane   = lerpCol(colLane, colFog, seg.tunnel ? 0 : fogF);
 
+    // --- TECHO DEL TÚNEL (ESPEJO DE LA CARRETERA) ---
+    if (seg.tunnel) {
+      // El techo se dibuja como espejo de la carretera
+      // Usar csy1 y csy2 que ya fueron calculados en líneas 300-301
+      int ceilDrawTop = max((int)csy2, 0);
+      int ceilDrawBot = min((int)csy1, SCR_CY);
+      int ceilBandH = ceilDrawBot - ceilDrawTop;
+
+      if (ceilBandH > 0) {
+        int ceilSubDiv = (ceilBandH > 6) ? min(3, ceilBandH / 3) : 1;
+        bool isLightCeil = ((sIdx / RUMBLE_LEN) % 2) == 0;
+        uint16_t ceilCol = lerpCol(isLightCeil ? colRoadL : colRoadD, colFog, 0);
+
+        for (int s = 0; s < ceilSubDiv; s++) {
+          int ceilSubTop = ceilDrawTop + s * ceilBandH / ceilSubDiv;
+          int ceilSubBot = ceilDrawTop + (s + 1) * ceilBandH / ceilSubDiv;
+          int ceilSubH = ceilSubBot - ceilSubTop;
+          if (ceilSubH <= 0) continue;
+
+          float tMid = (float)(2 * s + 1) / (float)(2 * ceilSubDiv);
+          int cx = (int)lerpF(sx2, sx1, tMid);
+          int hw = (int)lerpF(sw2, sw1, tMid);
+          int ceilL = cx - hw, ceilR = cx + hw;
+
+          // Dibujar techo (mismo color que carretera)
+          int a3 = max(0, ceilL), b3 = min(SCR_W, ceilR);
+          if (b3 > a3) spr.fillRect(a3, ceilSubTop, b3 - a3, ceilSubH, ceilCol);
+        }
+      }
+    }
+
+    // Guardamos info para dibujar después (no dibujamos la carretera aquí)
+    maxy = drawTop;
+  }
+
+  if (maxy > SCR_CY) {
+    // Relleno de suelo (solo si no es túnel, o si, para evitar huecos)
+     spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
+  }
+
+  // --- PRIMER PASO: RENDERIZADO 3D DE EDIFICIOS Y TÚNELES (DE ATRÁS HACIA ADELANTE) ---
+  for (int n = DRAW_DIST - 1; n > 1; n--) {
+    int sIdx = (baseIdx + n) % TOTAL_SEGS;
+    int prevIdx = (sIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
+    Segment& seg = segments[sIdx];
+    Segment& prevSeg = segments[prevIdx];
+
+    RenderPt& p1 = rCache[n];
+    RenderPt& p0 = rCache[n - 1];
+
+    if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
+
+    // TÚNEL EN 3D (BACK-TO-FRONT) - Solo paredes, el techo ya se dibujó en el primer loop
+    if (seg.tunnel) {
+       bool isLightT = ((sIdx / 3) % 2) == 0;
+       uint16_t wallT = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);  // Azul
+
+       float cH = 9000.0f;
+       int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
+       int cy0 = SCR_CY - (int)(p0.scale * (prevSeg.y + cH - camY) * SCR_CY);
+
+       // Bordes de la carretera (suelo)
+       int roadL0 = p0.x - p0.w;
+       int roadR0 = p0.x + p0.w;
+       int roadL1 = p1.x - p1.w;
+       int roadR1 = p1.x + p1.w;
+
+       // Bordes del techo
+       int ceilL0 = roadL0;
+       int ceilR0 = roadR0;
+       int ceilL1 = roadL1;
+       int ceilR1 = roadR1;
+
+       // 1. Pared Izquierda VERTICAL
+       drawQuad(roadL0, p0.y, roadL1, p1.y, ceilL1, cy1, ceilL0, cy0, wallT);
+
+       // 2. Pared Derecha VERTICAL
+       drawQuad(roadR0, p0.y, ceilR0, cy0, ceilR1, cy1, roadR1, p1.y, wallT);
+    }
+
+    // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
+    if (!seg.tunnel) {
+      // --- EDIFICIO IZQUIERDO ---
+      if (seg.buildL > 0) {
+         bool showFront = (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel;
+         drawBuilding(p0, p1, seg.buildL, seg.colorL, sIdx, true, showFront);
+      }
+
+      // --- EDIFICIO DERECHO ---
+      if (seg.buildR > 0) {
+         bool showFront = (prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) && !prevSeg.tunnel;
+         drawBuilding(p0, p1, seg.buildR, seg.colorR, sIdx, false, showFront);
+      }
+    }
+
+  }
+
+  // --- SEGUNDO PASO: DIBUJAR LA CARRETERA ENCIMA (DE ATRÁS HACIA ADELANTE) ---
+  maxy = SCR_H;
+  for (int n = 0; n < DRAW_DIST; n++) {
+    int sIdx = (baseIdx + n) % TOTAL_SEGS;
+    Segment& seg = segments[sIdx];
+
+    RenderPt& p1 = rCache[n];
+    if (n == 0 || p1.scale <= 0) continue;
+
+    RenderPt& p0 = rCache[n - 1];
+    if (p0.scale <= 0) continue;
+
+    int drawTop = max((int)p1.y, 0);
+    int drawBot = min((int)p0.y, maxy);
+    int bandH = drawBot - drawTop;
+    if (bandH <= 0) continue;
+
+    float fogF = expFog((float)n / DRAW_DIST, FOG_DENSITY);
+    bool isLight = ((sIdx / RUMBLE_LEN) % 2) == 0;
+    uint16_t grassCol = lerpCol(isLight ? colGrassL : colGrassD, colFog, fogF);
+    uint16_t wallCol = isLight ? rgb(35, 32, 30) : rgb(28, 25, 22);
+    uint16_t grass = seg.tunnel ? wallCol : grassCol;
+    uint16_t road = lerpCol(isLight ? colRoadL : colRoadD, colFog, seg.tunnel ? 0 : fogF);
+    uint16_t rumble = lerpCol(isLight ? colRumbleL : colRumbleD, colFog, seg.tunnel ? 0 : fogF);
+    uint16_t lane = lerpCol(colLane, colFog, seg.tunnel ? 0 : fogF);
+
     int subDiv = (bandH > 6) ? min(3, bandH / 3) : 1;
     for (int s = 0; s < subDiv; s++) {
       int subTop = drawTop + s * bandH / subDiv;
       int subBot = drawTop + (s + 1) * bandH / subDiv;
-      int subH   = subBot - subTop;
+      int subH = subBot - subTop;
       if (subH <= 0) continue;
 
       float tMid = (float)(2 * s + 1) / (float)(2 * subDiv);
-      int cx  = (int)lerpF(sx2, sx1, tMid);
-      int hw  = (int)lerpF(sw2, sw1, tMid);
-      int rdL = cx - hw,  rdR = cx + hw;
+      int cx = (int)lerpF(p1.x, p0.x, tMid);
+      int hw = (int)lerpF(p1.w, p0.w, tMid);
+      int rdL = cx - hw, rdR = cx + hw;
 
       // Césped / Paredes Planas (Base)
       int rw = max(1, hw / 6);
@@ -346,13 +469,12 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
     }
 
-    // --- SALIDA DEL TÚNEL removida de aquí, se dibuja en el segundo loop 3D ---
-
-    if (isLight && sw1 > 15 && bandH > 1) {
-      int midX = (sx1 + sx2) / 2;
-      int midW = (sw1 + sw2) / 2;
+    // Líneas de carril
+    if (isLight && p0.w > 15 && bandH > 1) {
+      int midX = (p0.x + p1.x) / 2;
+      int midW = (p0.w + p1.w) / 2;
       int midY = drawTop + bandH / 2;
-      int lh   = min(bandH, 3);
+      int lh = min(bandH, 3);
       for (int l = 1; l < LANES; l++) {
         float lt = (float)l / LANES;
         int lx = (int)lerpF(midX - midW, midX + midW, lt);
@@ -363,82 +485,13 @@ void drawRoad(float position, float playerX, float playerZdist,
     maxy = drawTop;
   }
 
-  if (maxy > SCR_CY) {
-    // Relleno de suelo (solo si no es túnel, o si, para evitar huecos)
-     spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
-  }
-
-  // --- RENDERIZADO 3D POLIGONAL (DE ATRÁS HACIA ADELANTE) ---
+  // --- TERCER PASO: SPRITES Y TRÁFICO ENCIMA DE TODO ---
   for (int n = DRAW_DIST - 1; n > 1; n--) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
-    int prevIdx = (sIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
     Segment& seg = segments[sIdx];
-    Segment& prevSeg = segments[prevIdx];
-
     RenderPt& p1 = rCache[n];
-    RenderPt& p0 = rCache[n - 1];
 
-    if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
-
-    // TÚNEL EN 3D (BACK-TO-FRONT)
-    if (seg.tunnel) {
-       bool isLightT = ((sIdx / 3) % 2) == 0;
-       // Colores más visibles para debug: azul para paredes, rojo para techo
-       uint16_t wallT = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);  // Azul
-       uint16_t ceilT = isLightT ? rgb(200, 80, 80) : rgb(150, 50, 50);   // Rojo
-
-       float cH = 15000.0f;
-       int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
-       int cy0 = SCR_CY - (int)(p0.scale * (prevSeg.y + cH - camY) * SCR_CY);
-
-       // El techo tiene las MISMAS dimensiones que la carretera
-       // Bordes de la carretera (suelo)
-       int roadL0 = p0.x - p0.w;  // Borde izquierdo carretera cerca
-       int roadR0 = p0.x + p0.w;  // Borde derecho carretera cerca
-       int roadL1 = p1.x - p1.w;  // Borde izquierdo carretera lejos
-       int roadR1 = p1.x + p1.w;  // Borde derecho carretera lejos
-
-       // Bordes del techo (mismas coordenadas X que la carretera)
-       int ceilL0 = roadL0;  // Borde izquierdo techo cerca
-       int ceilR0 = roadR0;  // Borde derecho techo cerca
-       int ceilL1 = roadL1;  // Borde izquierdo techo lejos
-       int ceilR1 = roadR1;  // Borde derecho techo lejos
-
-       // 1. Pared Izquierda VERTICAL (90° con respecto a la carretera)
-       // Conecta borde izquierdo de carretera con borde izquierdo del techo
-       drawQuad(roadL0, p0.y, roadL1, p1.y, ceilL1, cy1, ceilL0, cy0, wallT);
-
-       // 2. Pared Derecha VERTICAL (90° con respecto a la carretera)
-       // Conecta borde derecho de carretera con borde derecho del techo
-       drawQuad(roadR0, p0.y, ceilR0, cy0, ceilR1, cy1, roadR1, p1.y, wallT);
-
-       // 3. Techo (misma proyección y dimensiones que la carretera)
-       drawQuad(ceilL0, cy0, ceilR0, cy0, ceilR1, cy1, ceilL1, cy1, ceilT);
-
-       // 4. Salida del túnel (solo dibujar si es el último segmento visible o siguiente no es túnel)
-       if (n == DRAW_DIST - 1 || !segments[(sIdx + 1) % TOTAL_SEGS].tunnel) {
-          // Dibujar apertura negra más pequeña que no cubra todo
-          int exitY = min((int)p1.y, SCR_CY);
-          if (exitY > 0) {
-            spr.fillRect(0, 0, SCR_W, exitY, rgb(0,0,0));
-          }
-       }
-    }
-
-    // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
-    if (!seg.tunnel) {
-      // --- EDIFICIO IZQUIERDO ---
-      if (seg.buildL > 0) {
-         bool showFront = (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel;
-         drawBuilding(p0, p1, seg.buildL, seg.colorL, sIdx, true, showFront);
-      }
-
-      // --- EDIFICIO DERECHO ---
-      if (seg.buildR > 0) {
-         bool showFront = (prevSeg.buildR == 0 || prevSeg.buildR != seg.buildR) && !prevSeg.tunnel;
-         drawBuilding(p0, p1, seg.buildR, seg.colorR, sIdx, false, showFront);
-      }
-    }
+    if (p1.scale <= 0 || p1.y >= SCR_H) continue;
 
     // Sprites normales
     if (seg.spriteType >= 0) {

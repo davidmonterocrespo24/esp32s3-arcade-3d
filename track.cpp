@@ -64,22 +64,23 @@ void addSprite(int idx, int type, float off) {
 void buildTrack() {
   segCount = 0;
 
-  // Circuito muy variado con curvas pronunciadas en ambos sentidos y muchas colinas
-  addRoad(20, 30, 20, 0, 0);         // Recta de salida
-  addRoad(30, 50, 30,  6.0, 15);     // Curva DERECHA pronunciada + subida
-  addRoad(25, 30, 25,  0, -25);      // Recta + bajada fuerte
-  addRoad(40, 60, 40, -7.0, 0);      // Curva IZQUIERDA muy pronunciada
-  addRoad(20, 25, 20,  0, 30);       // Recta + colina grande
-  addRoad(35, 45, 35,  5.5, -20);    // Curva DERECHA fuerte + bajada
-  addRoad(25, 35, 25, -6.5, 10);     // Curva IZQUIERDA pronunciada + subida
-  addRoad(30, 40, 30,  0, -15);      // Recta + bajada
-  addRoad(40, 50, 40,  7.5, 20);     // Curva DERECHA extrema + colina
-  addRoad(30, 40, 30, -5.0, -25);    // Curva IZQUIERDA fuerte + bajada
-  addRoad(25, 30, 25,  4.5, 0);      // Curva DERECHA media
-  addRoad(35, 45, 35, -6.0, 15);     // Curva IZQUIERDA pronunciada + subida
-  addRoad(20, 30, 20,  0, -20);      // Recta + bajada
-  addRoad(40, 55, 40,  6.5, 10);     // Curva DERECHA fuerte + subida
-  addRoad(30, 35, 30, -4.5, -10);    // Curva IZQUIERDA media + bajada
+  // Circuito variado que alterna curvas izq/der y sube/baja constantemente
+  // TOTAL aprox: 15 secciones × ~13 segs = ~195 segmentos
+  addRoad(5, 10, 5, 0, 0);           // 1. Recta de salida
+  addRoad(8, 12, 8, -6.0, 10);       // 2. IZQUIERDA + subida
+  addRoad(5, 8, 5, 0, -15);          // 3. Recta + bajada
+  addRoad(8, 12, 8, 7.0, 0);         // 4. DERECHA fuerte
+  addRoad(5, 8, 5, 0, 20);           // 5. Recta + colina
+  addRoad(8, 12, 8, -5.5, -10);      // 6. IZQUIERDA + bajada
+  addRoad(5, 8, 5, 0, 0);            // 7. Recta plana
+  addRoad(8, 12, 8, 6.5, 15);        // 8. DERECHA + subida
+  addRoad(5, 8, 5, 0, -20);          // 9. Recta + bajada
+  addRoad(8, 12, 8, -7.5, 0);        // 10. IZQUIERDA extrema
+  addRoad(5, 8, 5, 0, 10);           // 11. Recta + subida
+  addRoad(8, 12, 8, 5.0, -15);       // 12. DERECHA + bajada
+  addRoad(5, 8, 5, 0, 0);            // 13. Recta
+  addRoad(8, 12, 8, -6.5, 20);       // 14. IZQUIERDA + colina
+  addRoad(5, 10, 5, 0, -10);         // 15. Recta final + bajada
 
   // Rellenar hasta TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0, false);
