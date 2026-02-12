@@ -509,15 +509,9 @@ void drawRoad(float position, float playerX, float playerZdist,
       int rdL = cx - hw,  rdR = cx + hw;
       int rmL = rdL - rw, rmR = rdR + rw;
 
+      // Césped normal (sin lógica de túnel aquí)
       int e1 = max(0, min(rmL, SCR_W));
-      if (seg.tunnel) {
-        // En túnel: dibujar paredes en lugar de césped
-        bool isLightSeg = ((sIdx / 3) % 2) == 0;
-        uint16_t tunnelWallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
-        if (e1 > 0) spr.fillRect(0, subTop, e1, subH, tunnelWallCol);
-      } else {
-        if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
-      }
+      if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
 
       int a2 = max(0, rmL), b2 = max(0, min(rdL, SCR_W));
       if (b2 > a2) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
@@ -529,42 +523,35 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (b4 > a4) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
 
       int s5 = max(0, min(rmR, SCR_W));
-      if (seg.tunnel) {
-        // En túnel: dibujar paredes en lugar de césped
-        bool isLightSeg = ((sIdx / 3) % 2) == 0;
-        uint16_t tunnelWallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
-        if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, tunnelWallCol);
-      } else {
-        if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
-      }
+      if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
     }
 
-    // --- TÚNEL: TECHO Y PAREDES ---
+    // --- TÚNEL: TECHO Y PAREDES VERTICALES ---
     if (seg.tunnel && csy2 > minCeilY) {
       int drawTop = minCeilY; 
       int drawBot = min(SCR_CY, (int)csy2);
       
       if (drawBot > drawTop) {
          bool isLightSeg = ((sIdx / 3) % 2) == 0;
-         uint16_t ceilCol = isLightSeg ? rgb(80, 80, 85) : rgb(50, 50, 55);
-         uint16_t wallCol = isLightSeg ? rgb(90, 90, 95) : rgb(60, 60, 65);
+         uint16_t ceilCol = isLightSeg ? rgb(100, 100, 105) : rgb(70, 70, 75);
+         uint16_t wallCol = isLightSeg ? rgb(120, 120, 125) : rgb(90, 90, 95);
 
-         // TECHO
+         // TECHO (todo el ancho)
          spr.fillRect(0, drawTop, SCR_W, drawBot - drawTop, ceilCol);
          
-         // PAREDES (Conectar suelo a techo)
-         // Calculamos los bordes de la carretera en sy1 (suelo cerca)
-         int roadEdgeL = sx1 - sw1;
-         int roadEdgeR = sx1 + sw1;
+         // PAREDES VERTICALES (desde drawTop del techo hasta drawBot de la carretera)
+         // Calcular bordes de la carretera para este segmento
+         int roadLeft = sx1 - sw1;  // Borde izquierdo de la carretera
+         int roadRight = sx1 + sw1; // Borde derecho de la carretera
          
-         // Pared izquierda: del borde izquierdo de pantalla al borde izquierdo de la carretera
-         if (roadEdgeL > 0) {
-           spr.fillRect(0, drawTop, roadEdgeL, drawBot - drawTop, wallCol);
+         // Pared izquierda: desde borde de pantalla hasta borde izquierdo de carretera
+         if (roadLeft > 0) {
+           spr.fillRect(0, drawTop, roadLeft, drawBot - drawTop, wallCol);
          }
          
-         // Pared derecha: del borde derecho de la carretera al borde derecho de pantalla
-         if (roadEdgeR < SCR_W) {
-           spr.fillRect(roadEdgeR, drawTop, SCR_W - roadEdgeR, drawBot - drawTop, wallCol);
+         // Pared derecha: desde borde derecho de carretera hasta borde de pantalla  
+         if (roadRight < SCR_W) {
+           spr.fillRect(roadRight, drawTop, SCR_W - roadRight, drawBot - drawTop, wallCol);
          }
          
          // LUZ CENTRAL
