@@ -577,7 +577,7 @@ void drawRoad(float position, float playerX, float playerZdist,
          
          minCeilY = drawBot;
        }
-    }
+     }
 
     if (isLight && sw1 > 15 && bandH > 1) {
       int midX = (sx1 + sx2) / 2;
