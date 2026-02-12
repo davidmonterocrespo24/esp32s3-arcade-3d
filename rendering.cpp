@@ -509,50 +509,64 @@ void drawRoad(float position, float playerX, float playerZdist,
       int rdL = cx - hw,  rdR = cx + hw;
       int rmL = rdL - rw, rmR = rdR + rw;
 
-      // Césped normal (sin lógica de túnel aquí)
-      int e1 = max(0, min(rmL, SCR_W));
-      if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
+      // PAREDES DEL TÚNEL con perspectiva (en cada scanline)
+      if (seg.tunnel) {
+        // Calcular proyección del techo para esta scanline
+        float tMidCeil = (float)(2 * s + 1) / (float)(2 * subDiv);
+        float cyp1_interp = lerpF(p2Y + 5000.0f - camY, p1Y + 5000.0f - camY, tMidCeil);
+        float sc_interp = lerpF(sc2, sc1, tMidCeil);
+        int csyMid = SCR_CY - (int)(sc_interp * cyp1_interp * SCR_CY);
+        
+        // Altura de pared para esta scanline (desde techo hasta suelo)
+        int wallHeight = subBot - max(0, csyMid);
+        int wallTop = max(0, csyMid);
+        
+        bool isLightSeg = ((sIdx / 3) % 2) == 0;
+        uint16_t tunnelWallCol = isLightSeg ? rgb(100, 100, 105) : rgb(70, 70, 75);
+        
+        // Pared izquierda: desde borde pantalla hasta borde carretera
+        int wallL = max(0, min(rdL, SCR_W));
+        if (wallL > 0 && wallHeight > 0) {
+          spr.fillRect(0, wallTop, wallL, wallHeight, tunnelWallCol);
+        }
+        
+        // Pared derecha: desde borde carretera hasta borde pantalla  
+        int wallR = max(0, rdR);
+        if (wallR < SCR_W && wallHeight > 0) {
+          spr.fillRect(wallR, wallTop, SCR_W - wallR, wallHeight, tunnelWallCol);
+        }
+      } else {
+        // Fuera del túnel: césped normal
+        int e1 = max(0, min(rmL, SCR_W));
+        if (e1 > 0) spr.fillRect(0, subTop, e1, subH, grass);
+      }
 
       int a2 = max(0, rmL), b2 = max(0, min(rdL, SCR_W));
-      if (b2 > a2) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
+      if (b2 > a2 && !seg.tunnel) spr.fillRect(a2, subTop, b2 - a2, subH, rumble);
 
       int a3 = max(0, rdL), b3 = min(SCR_W, rdR);
       if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
 
       int a4 = max(0, rdR), b4 = min(SCR_W, rmR);
-      if (b4 > a4) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
+      if (b4 > a4 && !seg.tunnel) spr.fillRect(a4, subTop, b4 - a4, subH, rumble);
 
-      int s5 = max(0, min(rmR, SCR_W));
-      if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
+      if (!seg.tunnel) {
+        int s5 = max(0, min(rmR, SCR_W));
+        if (s5 < SCR_W) spr.fillRect(s5, subTop, SCR_W - s5, subH, grass);
+      }
     }
 
-    // --- TÚNEL: TECHO Y PAREDES VERTICALES ---
+    // --- TÚNEL: TECHO ---
     if (seg.tunnel && csy2 > minCeilY) {
       int drawTop = minCeilY; 
       int drawBot = min(SCR_CY, (int)csy2);
       
       if (drawBot > drawTop) {
          bool isLightSeg = ((sIdx / 3) % 2) == 0;
-         uint16_t ceilCol = isLightSeg ? rgb(100, 100, 105) : rgb(70, 70, 75);
-         uint16_t wallCol = isLightSeg ? rgb(120, 120, 125) : rgb(90, 90, 95);
+         uint16_t ceilCol = isLightSeg ? rgb(80, 80, 85) : rgb(50, 50, 55);
 
-         // TECHO (todo el ancho)
+         // TECHO
          spr.fillRect(0, drawTop, SCR_W, drawBot - drawTop, ceilCol);
-         
-         // PAREDES VERTICALES (desde drawTop del techo hasta drawBot de la carretera)
-         // Calcular bordes de la carretera para este segmento
-         int roadLeft = sx1 - sw1;  // Borde izquierdo de la carretera
-         int roadRight = sx1 + sw1; // Borde derecho de la carretera
-         
-         // Pared izquierda: desde borde de pantalla hasta borde izquierdo de carretera
-         if (roadLeft > 0) {
-           spr.fillRect(0, drawTop, roadLeft, drawBot - drawTop, wallCol);
-         }
-         
-         // Pared derecha: desde borde derecho de carretera hasta borde de pantalla  
-         if (roadRight < SCR_W) {
-           spr.fillRect(roadRight, drawTop, SCR_W - roadRight, drawBot - drawTop, wallCol);
-         }
          
          // LUZ CENTRAL
          if (isLightSeg) {
