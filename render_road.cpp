@@ -302,42 +302,7 @@ void drawRoad(float position, float playerX, float playerZdist,
     uint16_t rumble = lerpCol(isLight ? colRumbleL : colRumbleD, colFog, seg.tunnel ? 0 : fogF);
     uint16_t lane   = lerpCol(colLane, colFog, seg.tunnel ? 0 : fogF);
 
-    // --- TECHO DEL TÚNEL (Mismo cálculo que las paredes para alineación) ---
-    if (seg.tunnel) {
-      // Usar la MISMA altura que las paredes del túnel
-      float ceilHeight = 9000.0f;
-
-      // Calcular coordenadas Y del techo (igual que en las paredes, líneas 366-368)
-      float cyp1 = (p1Y + ceilHeight) - camY;
-      float cyp2 = (p2Y + ceilHeight) - camY;
-      int16_t csy1 = SCR_CY - (int)(sc1 * cyp1 * SCR_CY);
-      int16_t csy2 = SCR_CY - (int)(sc2 * cyp2 * SCR_CY);
-
-      int ceilDrawTop = max((int)csy2, 0);
-      int ceilDrawBot = min((int)csy1, SCR_CY);
-      int ceilBandH = ceilDrawBot - ceilDrawTop;
-
-      if (ceilBandH > 0) {
-        int ceilSubDiv = (ceilBandH > 6) ? min(3, ceilBandH / 3) : 1;
-
-        for (int s = 0; s < ceilSubDiv; s++) {
-          int ceilSubTop = ceilDrawTop + s * ceilBandH / ceilSubDiv;
-          int ceilSubBot = ceilDrawTop + (s + 1) * ceilBandH / ceilSubDiv;
-          int ceilSubH = ceilSubBot - ceilSubTop;
-          if (ceilSubH <= 0) continue;
-
-          // MISMA interpolación que la carretera
-          float tMid = (float)(2 * s + 1) / (float)(2 * ceilSubDiv);
-          int cx = (int)lerpF(sx2, sx1, tMid);
-          int hw = (int)lerpF(sw2, sw1, tMid);
-          int ceilL = cx - hw, ceilR = cx + hw;
-
-          // Dibujar techo (mismo color que carretera)
-          int a3 = max(0, ceilL), b3 = min(SCR_W, ceilR);
-          if (b3 > a3) spr.fillRect(a3, ceilSubTop, b3 - a3, ceilSubH, road);
-        }
-      }
-    }
+    // TECHO DEL TÚNEL: Se dibuja en el loop 3D (back-to-front) junto con las paredes
 
     // Guardamos info para dibujar después (no dibujamos la carretera aquí)
     maxy = drawTop;
@@ -360,10 +325,17 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     if (p0.scale <= 0 || p1.scale <= 0 || p0.y >= SCR_H) continue;
 
-    // TÚNEL EN 3D (BACK-TO-FRONT) - Solo paredes, el techo ya se dibujó en el primer loop
+    // TÚNEL EN 3D (BACK-TO-FRONT) - Techo primero, luego paredes
     if (seg.tunnel) {
+       // Determinar colores con alternancia
        bool isLightT = ((sIdx / 3) % 2) == 0;
        uint16_t wallT = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);  // Azul
+
+       // Calcular colores del techo (mismo patrón que la carretera)
+       bool isLightCeil = ((sIdx / RUMBLE_LEN) % 2) == 0;
+       uint16_t roadCeilL = isLightCeil ? colRoadL : colRoadD;
+       uint16_t roadCeilD = isLightCeil ? colRoadD : colRoadL;
+       uint16_t ceilColor = isLightCeil ? roadCeilL : roadCeilD;
 
        float cH = 9000.0f;
        int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
@@ -375,16 +347,23 @@ void drawRoad(float position, float playerX, float playerZdist,
        int roadL1 = p1.x - p1.w;
        int roadR1 = p1.x + p1.w;
 
-       // Bordes del techo
-       int ceilL0 = roadL0;
-       int ceilR0 = roadR0;
-       int ceilL1 = roadL1;
-       int ceilR1 = roadR1;
+       // Bordes del techo (extendidos para cubrir el ancho del túnel)
+       // El techo debe ser más ancho que la carretera para crear el túnel completo
+       int tunnelWidth0 = (int)(p0.w * 1.2f);  // 20% más ancho
+       int tunnelWidth1 = (int)(p1.w * 1.2f);
+       int ceilL0 = p0.x - tunnelWidth0;
+       int ceilR0 = p0.x + tunnelWidth0;
+       int ceilL1 = p1.x - tunnelWidth1;
+       int ceilR1 = p1.x + tunnelWidth1;
 
-       // 1. Pared Izquierda VERTICAL
+       // 1. TECHO (espejo de la carretera)
+       // Vértices: izquierda-cerca, derecha-cerca, derecha-lejos, izquierda-lejos
+       drawQuad(ceilL0, cy0, ceilR0, cy0, ceilR1, cy1, ceilL1, cy1, ceilColor);
+
+       // 2. Pared Izquierda VERTICAL
        drawQuad(roadL0, p0.y, roadL1, p1.y, ceilL1, cy1, ceilL0, cy0, wallT);
 
-       // 2. Pared Derecha VERTICAL
+       // 3. Pared Derecha VERTICAL
        drawQuad(roadR0, p0.y, ceilR0, cy0, ceilR1, cy1, roadR1, p1.y, wallT);
     }
 
