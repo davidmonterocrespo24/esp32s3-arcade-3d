@@ -99,16 +99,14 @@ void buildTrack() {
     if (buildCounterL <= 0) {
       // 50% probabilidad de edificio, 50% hueco (Menos juntos: "no tan juntos")
       if (random(0, 10) < 5) {
-        // Altura MÁXIMA aumentada (Más altos: "mas alto")
-        // Antes: 50000-160000 -> Ahora: 120000-300000 (casi el doble)
-        curBuildL = random(120000, 300000); 
+        // Altura EXTREMA (Rascacielos)
+        curBuildL = random(400000, 1000000); 
         
         // Colores más variados y urbanos
         curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
         
-        // Anchura aumentada (Más anchos: "mas ancho")
-        // Antes: 2-5 -> Ahora: 6-15 segmentos
-        buildCounterL = random(6, 15);
+        // MUCHO MÁS ANCHOS (Segmentos)
+        buildCounterL = random(20, 45);
       } else {
         curBuildL = 0; // Hueco entre edificios
         buildCounterL = random(3, 8); // Huecos más largos también
@@ -120,10 +118,10 @@ void buildTrack() {
 
     // --- LADO DERECHO (Lógica independiente) ---
     if (buildCounterR <= 0) {
-      if (random(0, 10) < 5) { // 50% probabilidad
-        curBuildR = random(120000, 300000); // Mucho más altos
+      if (random(0, 10) < 6) { 
+        curBuildR = random(400000, 1000000); 
         curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
-        buildCounterR = random(6, 15); // Mucho más anchos
+        buildCounterR = random(20, 45); // Más segmentos
       } else {
         curBuildR = 0;
         buildCounterR = random(3, 8);

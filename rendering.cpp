@@ -178,7 +178,8 @@ void drawPlayerCar() {
   // ¡Elipse de sombra eliminada!
 
   // --- MOTOR 3D ---
-  float angle = (-playerX * 0.2) + PI; // +PI para ver la parte trasera
+  // Invertido: +playerX para que se incline al lado opuesto del giro
+  float angle = (playerX * 0.22f) + PI; 
   float cosA = cos(angle);
   float sinA = sin(angle);
 
@@ -307,9 +308,9 @@ void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, ui
 void drawBuilding(RenderPt& p0, RenderPt& p1, int heightVal, uint16_t baseCol, int sIdx, bool isLeft, bool showFront) {
   int h1 = (int)(p1.scale * heightVal);
   int h0 = (int)(p0.scale * heightVal);
-  // Ancho del edificio (150000 = ancho, validado por usuario)
-  int bw1 = (int)(p1.scale * 150000);
-  int bw0 = (int)(p0.scale * 150000);
+  // Ancho del edificio MUCHO MÁS ANCHO (400000)
+  int bw1 = (int)(p1.scale * 400000);
+  int bw0 = (int)(p0.scale * 400000);
   
   // Offset desde la carretera (1.5x validado por usuario)
   int off1 = p1.w * 1.5; 
