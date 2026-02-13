@@ -177,6 +177,7 @@ void updatePhysics(float dt) {
 void checkCollisions() {
   const float playerW = 0.15;
   int pSeg = findSegIdx(position + playerZdist);
+  Segment& s = segments[pSeg];
 
   // Colisiones con tráfico
   for (int i = 0; i < MAX_CARS; i++) {
@@ -193,9 +194,22 @@ void checkCollisions() {
     }
   }
 
+  // Colisiones con paredes del tunel
+  if (s.tunnel) {
+    const float wallX = 0.95f;
+    if (playerX < -wallX || playerX > wallX) {
+      playerX = clampF(playerX, -wallX, wallX);
+      velocityX = 0.0f;
+      speed *= 0.3f;
+      if (speed > maxSpeed * 0.35f) {
+        crashed = true;
+        crashTimer = millis();
+      }
+    }
+  }
+
   // Colisiones con sprites
   if (playerX < -1.0 || playerX > 1.0) {
-    Segment& s = segments[pSeg];
     if (s.spriteType >= 0 && overlapChk(playerX, playerW, s.spriteOffset, 0.4)) {
       speed *= 0.2;
       if (speed > maxSpeed * 0.25) {

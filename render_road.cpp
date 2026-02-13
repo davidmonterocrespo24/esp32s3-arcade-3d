@@ -262,7 +262,7 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     // ── CARRETERA DE ESTE SEGMENTO ────────────────────────────────────────────
     int drawTop = max((int)p1.y, 0);
-    int drawBot = min((int)p0.y, rClip[n - 1]);
+    int drawBot = min((int)p0.y, (int)rClip[n - 1]);
     int bandH = drawBot - drawTop;
     if (bandH <= 0) continue;
 

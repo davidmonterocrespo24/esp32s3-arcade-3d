@@ -235,7 +235,7 @@ void drawPlayerCar() {
   float slope  = (yEnd - yStart) / (SEG_LEN * SLOPE_SAMPLES);
   float roadPitch = atanf(slope);
 
-  float rotY  = playerX * 0.22f;
+  float rotY  = playerX * 0.5f;
   // pitch base (cámara desde arriba) + inclinación de la carretera
   float pitch = 0.28f + roadPitch;
 
