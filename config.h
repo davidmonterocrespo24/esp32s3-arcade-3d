@@ -37,6 +37,9 @@
 #define CAM_HEIGHT  1000      // Altura de la cámara
 #define FOG_DENSITY 5         // Densidad de la niebla
 
+// 1 = pista aleatoria al iniciar, 0 = pista fija
+#define RANDOM_TRACK 1
+
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTES DE TRÁFICO
 // ═══════════════════════════════════════════════════════════════

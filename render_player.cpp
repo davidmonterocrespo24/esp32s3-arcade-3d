@@ -233,11 +233,14 @@ void drawPlayerCar() {
   int farIdx   = (segIdx + SLOPE_SAMPLES) % TOTAL_SEGS;
   float yEnd   = segments[farIdx].y;
   float slope  = (yEnd - yStart) / (SEG_LEN * SLOPE_SAMPLES);
-  float roadPitch = atanf(slope);
+  float roadPitch = atanf(slope) * 0.20f;
+  roadPitch = clampF(roadPitch, -0.25f, 0.25f);
+  static float smoothPitch = 0.0f;
+  smoothPitch += (roadPitch - smoothPitch) * 0.15f;
 
   float rotY  = playerX * 0.5f;
   // pitch base (cámara desde arriba) + inclinación de la carretera
-  float pitch = 0.28f + roadPitch;
+  float pitch = 0.28f + smoothPitch;
 
   renderCar2Mesh(centerX, centerY, rotY, pitch, 6.5f, 130.0f);
 }

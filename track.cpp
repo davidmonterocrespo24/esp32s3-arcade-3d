@@ -64,6 +64,34 @@ void addSprite(int idx, int type, float off) {
 void buildTrack() {
   segCount = 0;
 
+#if RANDOM_TRACK
+  // Pista aleatoria: combina rectas, curvas y subidas/bajadas
+  int pendingReturnDir = 0;
+  float pendingReturnMag = 0.0f;
+  while (segCount < TOTAL_SEGS) {
+    int enter = random(4, 8);
+    int hold  = random(6, 14);
+    int leave = random(4, 8);
+
+    float curve = (float)random(-80, 81) / 10.0f; // -8.0 a 8.0
+    if (curve > -2.0f && curve < 2.0f) curve = 0.0f;
+
+    float hill = 0.0f;
+    if (pendingReturnDir != 0) {
+      hill = (float)pendingReturnDir * pendingReturnMag;
+      pendingReturnDir = 0;
+    } else {
+      hill = (float)random(-20, 21); // -20 a 20
+      if (hill > -6.0f && hill < 6.0f) hill = 0.0f;
+      if (hill != 0.0f) {
+        pendingReturnDir = (hill > 0.0f) ? -1 : 1;
+        pendingReturnMag = max(6.0f, fabsf(hill) * 0.6f);
+      }
+    }
+
+    addRoad(enter, hold, leave, curve, hill);
+  }
+#else
   // Circuito variado que alterna curvas izq/der y sube/baja constantemente
   // TOTAL aprox: 15 secciones × ~13 segs = ~195 segmentos
   addRoad(5, 10, 5, 0, 0);           // 1. Recta de salida
@@ -81,6 +109,7 @@ void buildTrack() {
   addRoad(5, 8, 5, 0, 0);            // 13. Recta
   addRoad(8, 12, 8, -6.5, 20);       // 14. IZQUIERDA + colina
   addRoad(5, 10, 5, 0, -10);         // 15. Recta final + bajada
+#endif
 
   // Rellenar hasta TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0, false);
@@ -89,7 +118,9 @@ void buildTrack() {
   // 1. TÚNEL ÚNICO (Solo 1 túnel largo, no múltiples)
   // Posicionado en el segundo tercio de la pista
   // EXTENSION: 60 segmentos (mas largo)
-  for (int i = 50; i < 130; i++) { 
+  int tunnelStart = TOTAL_SEGS / 3;
+  int tunnelLen = min(60, TOTAL_SEGS - tunnelStart - 1);
+  for (int i = tunnelStart; i < tunnelStart + tunnelLen; i++) {
     segments[i].tunnel = true;
     segments[i].buildL = 0; // Sin edificios dentro
     segments[i].buildR = 0;
