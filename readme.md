@@ -8,7 +8,7 @@ An OutRun-style pseudo-3D racing game for the ESP32-S3 microcontroller with an I
 
 ### Video Demo
 
-![Game Demo](img/m2-res_1920p.gif)
+![Game Demo](img/game.gif)
 
 ### Images
 
