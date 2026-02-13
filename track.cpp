@@ -168,19 +168,13 @@ void buildTrack() {
 
     // --- LADO IZQUIERDO (Edificios estilo ciudad) ---
     if (buildCounterL <= 0) {
-      // 50% probabilidad de edificio, 50% hueco (Menos juntos: "no tan juntos")
-      if (random(0, 10) < 5) {
-        // Altura EXTREMA (Rascacielos)
+      if (random(0, 10) < 6) {
         curBuildL = random(400000, 1000000);
-
-        // Colores más variados y urbanos
         curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
-
-        // MUCHO MÁS ANCHOS (Segmentos)
-        buildCounterL = random(20, 45);
+        buildCounterL = random(6, 16); // bloque corto = variedad
       } else {
-        curBuildL = 0; // Hueco entre edificios
-        buildCounterL = random(3, 8); // Huecos más largos también
+        curBuildL = 0;
+        buildCounterL = random(10, 20); // hueco amplio entre bloques
       }
     }
     segments[i].buildL = curBuildL;
@@ -192,10 +186,10 @@ void buildTrack() {
       if (random(0, 10) < 6) {
         curBuildR = random(400000, 1000000);
         curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
-        buildCounterR = random(20, 45); // Más segmentos
+        buildCounterR = random(6, 16);
       } else {
         curBuildR = 0;
-        buildCounterR = random(3, 8);
+        buildCounterR = random(10, 20);
       }
     }
     segments[i].buildR = curBuildR;

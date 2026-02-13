@@ -242,6 +242,23 @@ void drawPlayerCar() {
   // pitch base (cámara desde arriba) + inclinación de la carretera
   float pitch = 0.28f + smoothPitch;
 
+  // Sombra debajo del auto — elipse oscura aplastada sobre la carretera
+  // Desplazada hacia abajo para que se vea proyectada bajo el chasis
+  int shadowX  = centerX + (int)(playerX * 30.0f);
+  int shadowY  = SCR_H - 18;   // más arriba para quedar bajo el auto
+  int shadowRx = 42;
+  int shadowRy = 5;
+  uint16_t shadowCol = rgb(10, 10, 10);
+  for (int dy = -shadowRy; dy <= shadowRy; dy++) {
+    float t  = (float)dy / shadowRy;
+    int   hw = (int)(shadowRx * sqrtf(1.0f - t * t));
+    int   sy = shadowY + dy;
+    if (sy < 0 || sy >= SCR_H) continue;
+    int x0 = max(0, shadowX - hw);
+    int x1 = min(SCR_W - 1, shadowX + hw);
+    if (x1 > x0) spr.drawFastHLine(x0, sy, x1 - x0, shadowCol);
+  }
+
   renderCar2Mesh(centerX, centerY, rotY, pitch, 6.5f, 130.0f);
 }
 

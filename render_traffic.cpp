@@ -51,9 +51,10 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
   auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t faceCol) {
     float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
     if (cross > 0) {
-      // Verificar que está dentro del clip
+      // Evitar dibujar caras completamente fuera de pantalla
       float maxY = max(max(sy[v0], sy[v1]), max(sy[v2], sy[v3]));
-      if (maxY < clipY) return;
+      float minY = min(min(sy[v0], sy[v1]), min(sy[v2], sy[v3]));
+      if (maxY < 0 || minY > SCR_H) return;
       drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], faceCol);
     }
   };
