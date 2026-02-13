@@ -12,7 +12,7 @@ https://packaged-media.redd.it/cb0362oun6jg1/pb/m2-res_1920p.mp4?m=DASHPlaylist.
 
 ### Images
 
-![ESP32 Hardware](img/hardesp32.webp)
+<img src="img/hardesp32.webp" alt="ESP32 Hardware" width="600">
 
 ![Game Screenshot 1](img/Captura%20de%20pantalla%202026-02-13%20112753.png)
 
