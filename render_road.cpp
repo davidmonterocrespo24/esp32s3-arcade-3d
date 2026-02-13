@@ -12,6 +12,7 @@
 #include "utils.h"
 #include "track.h"
 #include "physics.h"
+#include "render_building.h"
 
 // Variables externas necesarias
 extern RenderPt rCache[DRAW_DIST];
@@ -239,14 +240,11 @@ void drawRoad(float position, float playerX, float playerZdist,
        int roadL1 = p1.x - p1.w;
        int roadR1 = p1.x + p1.w;
 
-       // Bordes del techo (extendidos para cubrir el ancho del túnel)
-       // El techo debe ser más ancho que la carretera para crear el túnel completo
-       int tunnelWidth0 = (int)(p0.w * 1.2f);  // 20% más ancho
-       int tunnelWidth1 = (int)(p1.w * 1.2f);
-       int ceilL0 = p0.x - tunnelWidth0;
-       int ceilR0 = p0.x + tunnelWidth0;
-       int ceilL1 = p1.x - tunnelWidth1;
-       int ceilR1 = p1.x + tunnelWidth1;
+       // Bordes del techo: mismo ancho que la carretera para paredes 90°
+       int ceilL0 = roadL0;
+       int ceilR0 = roadR0;
+       int ceilL1 = roadL1;
+       int ceilR1 = roadR1;
 
        // 1. TECHO (espejo de la carretera)
        // Vértices: izquierda-cerca, derecha-cerca, derecha-lejos, izquierda-lejos
