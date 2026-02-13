@@ -5,7 +5,9 @@
       "Bash(powershell -Command \"\\(Get-Content ''e:\\\\Hardware\\\\car_game\\\\rendering.cpp''\\).Length\")",
       "Bash(make clean:*)",
       "Bash(make)",
-      "Bash(./car_game_emu.exe)"
+      "Bash(./car_game_emu.exe)",
+      "Bash(make:*)",
+      "Bash(echo:*)"
     ]
   }
 }

@@ -240,10 +240,12 @@ void drawRoad(float position, float playerX, float playerZdist,
        int ceilL1 = roadL1;
        int ceilR1 = roadR1;
 
-       // 0. FONDO DEL TÚNEL (negro) — solo en el último segmento tunnel antes de salida
+       // 0. FONDO DEL TÚNEL (negro) — en el último segmento visible (DRAW_DIST) o fin de túnel
        {
          int nextIdx = (sIdx + 1) % TOTAL_SEGS;
-         if (!segments[nextIdx].tunnel) {
+         bool isLastVisible = (n == DRAW_DIST - 1);
+         bool isTunnelEnd   = !segments[nextIdx].tunnel;
+         if (isLastVisible || isTunnelEnd) {
            int intTop = cy1;
            int intBot = (int)p1.y;
            int intL   = max(roadL1, 0);
