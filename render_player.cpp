@@ -20,22 +20,21 @@ void drawPlayerCar() {
   float cosA = cos(angle);
   float sinA = sin(angle);
 
-  // VÉRTICES MODIFICADOS: Se aumentó el valor Y de la parte delantera (Z = -58)
+  // Vértices derivados del OBJ Car2.obj (escala 21: 1 unidad OBJ = 21 render units)
+  // Bounding box OBJ: X:±1.25, Y:0.29-2.17, Z:-3.20(frente) a +3.04(trasera)
   float verts[28][3] = {
     // --- CHASIS INFERIOR (0-7) ---
-    {-26, 4, -58}, { 26, 4, -58}, { 26, 0,  58}, {-26, 0,  58}, // Frente levantado a Y=4
-    {-26, 16, -58}, { 26, 16, -58}, { 28, 14, 58}, {-28, 14, 58}, // Capó a Y=16, maletero a Y=14
+    {-26,  4, -67}, { 26,  4, -67}, { 26,  4,  64}, {-26,  4,  64}, // Base
+    {-26, 14, -67}, { 26, 14, -67}, { 26, 19,  64}, {-26, 19,  64}, // Perfil lateral superior
 
     // --- CABINA Y VIDRIOS (8-15) ---
-    {-22, 16, -18}, { 22, 16, -18}, { 24, 15, 30}, {-24, 15, 30}, // Base de los vidrios
-    {-17, 30,  -5}, { 17, 30,  -5}, { 17, 28, 18}, {-17, 28, 18}, // Techo levemente inclinado
+    {-26, 19, -32}, { 26, 19, -32}, { 26, 19,  28}, {-26, 19,  28}, // Base cabina
+    {-22, 38, -35}, { 22, 38, -35}, { 22, 38,   7}, {-22, 38,   7}, // Techo
 
-    // --- ALERÓN TRASERO REDISEÑADO (16-27) ---
-    // Postes de soporte (menos altos)
-    {-30, 16, 50}, {-26, 16, 50}, {-26, 22, 50}, {-30, 22, 50}, // 16-19: Poste izquierdo
-    { 26, 16, 50}, { 30, 16, 50}, { 30, 22, 50}, { 26, 22, 50}, // 20-23: Poste derecho
-    // Placa horizontal del alerón (más baja)
-    {-34, 22, 48}, { 34, 22, 48}, { 34, 26, 48}, {-34, 26, 48}  // 24-27: Superficie del alerón
+    // --- ALERÓN TRASERO (16-27) ---
+    {-30, 19, 56}, {-26, 19, 56}, {-26, 26, 56}, {-30, 26, 56}, // Poste izquierdo
+    { 26, 19, 56}, { 30, 19, 56}, { 30, 26, 56}, { 26, 26, 56}, // Poste derecho
+    {-34, 26, 54}, { 34, 26, 54}, { 34, 30, 54}, {-34, 30, 54}  // Placa alerón
   };
 
   float sx[28], sy[28];
@@ -150,22 +149,20 @@ void drawStartScreen(float time) {
   float cosA = cos(angle);
   float sinA = sin(angle);
 
-  // Esculpimos el coche: 28 Vértices {X (Ancho), Y (Alto), Z (Largo)}
+  // Vértices derivados del OBJ Car2.obj (escala 21)
   float verts[28][3] = {
     // --- CHASIS INFERIOR (0-7) ---
-    {-22, 0, -48}, { 22, 0, -48}, { 22, 0,  48}, {-22, 0,  48}, // 0-3: Base pegada al piso
-    {-22, 8, -48}, { 22, 8, -48}, { 24, 14, 48}, {-24, 14, 48}, // 4-7: Capó inclinado hacia abajo y maletero
+    {-26,  4, -67}, { 26,  4, -67}, { 26,  4,  64}, {-26,  4,  64},
+    {-26, 14, -67}, { 26, 14, -67}, { 26, 19,  64}, {-26, 19,  64},
 
     // --- CABINA Y VIDRIOS (8-15) ---
-    {-18, 10, -15}, { 18, 10, -15}, { 20, 14, 25}, {-20, 14, 25}, // 8-11: Base de los vidrios
-    {-14, 24,  0},  { 14, 24,  0},  { 14, 22, 15}, {-14, 22, 15}, // 12-15: Techo de la cabina
+    {-26, 19, -32}, { 26, 19, -32}, { 26, 19,  28}, {-26, 19,  28},
+    {-22, 38, -35}, { 22, 38, -35}, { 22, 38,   7}, {-22, 38,   7},
 
-    // --- ALERÓN TRASERO REDISEÑADO (16-27) ---
-    // Postes de soporte (menos altos)
-    {-26, 14, 44}, {-22, 14, 44}, {-22, 20, 44}, {-26, 20, 44}, // 16-19: Poste izquierdo
-    { 22, 14, 44}, { 26, 14, 44}, { 26, 20, 44}, { 22, 20, 44}, // 20-23: Poste derecho
-    // Placa horizontal del alerón (más baja)
-    {-30, 20, 42}, { 30, 20, 42}, { 30, 24, 42}, {-30, 24, 42}  // 24-27: Superficie del alerón
+    // --- ALERÓN TRASERO (16-27) ---
+    {-30, 19, 56}, {-26, 19, 56}, {-26, 26, 56}, {-30, 26, 56},
+    { 26, 19, 56}, { 30, 19, 56}, { 30, 26, 56}, { 26, 26, 56},
+    {-34, 26, 54}, { 34, 26, 54}, { 34, 30, 54}, {-34, 30, 54}
   };
 
   float sx[28], sy[28];
