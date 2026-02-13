@@ -29,12 +29,16 @@ static void drawTexturedTri(
   if (ay > cy) { float t; t=ax;ax=cx;cx=t; t=ay;ay=cy;cy=t; t=au;au=cu;cu=t; t=av;av=cv;cv=t; }
   if (by > cy) { float t; t=bx;bx=cx;cx=t; t=by;by=cy;cy=t; t=bu;bu=cu;cu=t; t=bv;bv=cv;cv=t; }
 
+  // Descartar triángulos degenerados
+  if (cy - ay < 0.5f) return;
+
   int yA = (int)ay, yB = (int)by, yC = (int)cy;
   yA = max(yA, 0); yC = min(yC, SCR_H - 1);
+  if (yA > yC) return;
 
   for (int y = yA; y <= yC; y++) {
     // Calcular bordes izq/der y UVs interpolados
-    float t_AC = (yC != (int)ay) ? (float)(y - ay) / (cy - ay) : 0.0f;
+    float t_AC = (cy - ay > 0.001f) ? (float)(y - ay) / (cy - ay) : 0.0f;
     float xAC = ax + t_AC * (cx - ax);
     float uAC = au + t_AC * (cu - au);
     float vAC = av + t_AC * (cv - av);
@@ -56,9 +60,12 @@ static void drawTexturedTri(
       else            { xL=xBC; xR=xAC; uL=uBC; uR=uAC; vL=vBC; vR=vAC; }
     }
 
+    if (xR - xL < 0.5f) continue;   // scanline vacío
+    if (xR - xL > 160.0f) continue; // scanline demasiado ancho = artefacto
     int x0 = max((int)xL, 0);
     int x1 = min((int)xR, SCR_W - 1);
-    float dx = (xR - xL > 0.001f) ? 1.0f / (xR - xL) : 0.0f;
+    if (x0 > x1) continue;
+    float dx = 1.0f / (xR - xL);
 
     for (int x = x0; x <= x1; x++) {
       float t = (x - xL) * dx;
@@ -173,6 +180,13 @@ static void renderCar2Mesh(int centerX, int centerY,
     float bx = px[i1], by = py[i1];
     float cx = px[i2], cy = py[i2];
 
+    // Descartar triángulos con vértices fuera de pantalla (evita rayas)
+    const float MARGIN = 20.0f;
+    if (ax < -MARGIN || ax > SCR_W+MARGIN || bx < -MARGIN || bx > SCR_W+MARGIN ||
+        cx < -MARGIN || cx > SCR_W+MARGIN) continue;
+    if (ay < -MARGIN || ay > SCR_H+MARGIN || by < -MARGIN || by > SCR_H+MARGIN ||
+        cy < -MARGIN || cy > SCR_H+MARGIN) continue;
+
     // Backface culling (invertido porque Y está negado)
     float cross = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
     if (cross <= 0) continue;
@@ -211,12 +225,15 @@ void drawPlayerCar() {
   int centerX = SCR_CX;
   int centerY = SCR_H - 40;
 
-  // Calcular pendiente de la carretera para inclinar el auto
-  int segIdx  = findSegIdx(position + playerZdist);
-  int prevIdx = (segIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
-  float slope = (segments[segIdx].y - segments[prevIdx].y) / SEG_LEN;
-  // Convertir pendiente a ángulo de pitch del auto (negativo = sube = inclina hacia arriba)
-  float roadPitch = atanf(slope * 0.8f);
+  // Calcular pendiente real de la carretera promediando varios segmentos
+  // para que el auto siga la inclinación suavemente (igual que la cámara)
+  int segIdx = findSegIdx(position + playerZdist);
+  const int SLOPE_SAMPLES = 6;
+  float yStart = segments[segIdx].y;
+  int farIdx   = (segIdx + SLOPE_SAMPLES) % TOTAL_SEGS;
+  float yEnd   = segments[farIdx].y;
+  float slope  = (yEnd - yStart) / (SEG_LEN * SLOPE_SAMPLES);
+  float roadPitch = atanf(slope);
 
   float rotY  = playerX * 0.22f;
   // pitch base (cámara desde arriba) + inclinación de la carretera
