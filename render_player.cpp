@@ -1,7 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE RENDERIZADO DEL AUTO DEL JUGADOR
-  Renderizado 3D con malla OBJ + textura RGB565
+  PLAYER CAR RENDERING IMPLEMENTATION
+  3D rendering with OBJ mesh + RGB565 texture
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -16,7 +16,7 @@
 #include "car2_texture.h"
 
 // ---------------------------------------------------------------------------
-// Rasterizador de triángulo texturizado (affine mapping, scanline)
+// Textured triangle rasterizer (affine mapping, scanline)
 // ---------------------------------------------------------------------------
 static void drawTexturedTri(
     float ax, float ay, float au, float av,
@@ -24,12 +24,12 @@ static void drawTexturedTri(
     float cx, float cy, float cu, float cv,
     float light)
 {
-  // Ordenar vértices por Y ascendente (a <= b <= c)
+  // Sort vertices by ascending Y (a <= b <= c)
   if (ay > by) { float t; t=ax;ax=bx;bx=t; t=ay;ay=by;by=t; t=au;au=bu;bu=t; t=av;av=bv;bv=t; }
   if (ay > cy) { float t; t=ax;ax=cx;cx=t; t=ay;ay=cy;cy=t; t=au;au=cu;cu=t; t=av;av=cv;cv=t; }
   if (by > cy) { float t; t=bx;bx=cx;cx=t; t=by;by=cy;cy=t; t=bu;bu=cu;cu=t; t=bv;bv=cv;cv=t; }
 
-  // Descartar triángulos degenerados
+  // Discard degenerate triangles
   if (cy - ay < 0.5f) return;
 
   int yA = (int)ay, yB = (int)by, yC = (int)cy;
@@ -37,7 +37,7 @@ static void drawTexturedTri(
   if (yA > yC) return;
 
   for (int y = yA; y <= yC; y++) {
-    // Calcular bordes izq/der y UVs interpolados
+    // Calculate left/right edges and interpolated UVs
     float t_AC = (cy - ay > 0.001f) ? (float)(y - ay) / (cy - ay) : 0.0f;
     float xAC = ax + t_AC * (cx - ax);
     float uAC = au + t_AC * (cu - au);
@@ -60,8 +60,8 @@ static void drawTexturedTri(
       else            { xL=xBC; xR=xAC; uL=uBC; uR=uAC; vL=vBC; vR=vAC; }
     }
 
-    if (xR - xL < 0.5f) continue;   // scanline vacío
-    if (xR - xL > 160.0f) continue; // scanline demasiado ancho = artefacto
+    if (xR - xL < 0.5f) continue;   // empty scanline
+    if (xR - xL > 160.0f) continue; // scanline too wide = artifact
     int x0 = max((int)xL, 0);
     int x1 = min((int)xR, SCR_W - 1);
     if (x0 > x1) continue;
@@ -72,9 +72,9 @@ static void drawTexturedTri(
       float u = uL + t * (uR - uL);
       float v = vL + t * (vR - vL);
 
-      // Sample textura (clamp)
+      // Sample texture (clamp)
       int tx = (int)(u * (CAR2_TEX_W - 1));
-      int ty = (int)((1.0f - v) * (CAR2_TEX_H - 1));  // flip V (OBJ es bottom-up)
+      int ty = (int)((1.0f - v) * (CAR2_TEX_H - 1));  // flip V (OBJ is bottom-up)
       tx = max(0, min(tx, CAR2_TEX_W - 1));
       ty = max(0, min(ty, CAR2_TEX_H - 1));
 
@@ -84,7 +84,7 @@ static void drawTexturedTri(
       uint16_t texel = car2_texture[ty * CAR2_TEX_W + tx];
 #endif
 
-      // Aplicar iluminación simple (multiplicar canales)
+      // Apply simple lighting (multiply channels)
       if (light < 0.99f) {
         uint8_t r = ((texel >> 11) & 0x1F);
         uint8_t g = ((texel >>  5) & 0x3F);
@@ -101,7 +101,7 @@ static void drawTexturedTri(
 }
 
 // ---------------------------------------------------------------------------
-// Proyectar y renderizar la malla Car2 completa
+// Project and render the full Car2 mesh
 // ---------------------------------------------------------------------------
 static void renderCar2Mesh(int centerX, int centerY,
                             float rotY, float pitch, float camDist, float fov)
@@ -109,7 +109,7 @@ static void renderCar2Mesh(int centerX, int centerY,
   float cosY = cosf(rotY), sinY = sinf(rotY);
   float cosP = cosf(pitch), sinP = sinf(pitch);
 
-  // Proyectar todos los vértices
+  // Project all vertices
   static float px[428], py[428], pz[428];
 
   for (int i = 0; i < car2_vert_count; i++) {
@@ -117,16 +117,16 @@ static void renderCar2Mesh(int centerX, int centerY,
     float y = car2_verts[i].y;
     float z = car2_verts[i].z;
 
-    // Bajar el modelo para que las ruedas queden al fondo (Y suelo ~0)
-    // Desplazar para que el centro visual quede en ~0.8 (entre ruedas y techo)
+    // Lower the model so wheels rest at the bottom (ground Y ~0)
+    // Shift so the visual center is at ~0.8 (between wheels and roof)
     y -= 0.5f;
 
-    // Rotación Y (yaw) — negada para orientación correcta
+    // Y rotation (yaw) — negated for correct orientation
     float rx = x * cosY - z * sinY;
-    float ry = -y;   // Invertir Y: OBJ Y-up → pantalla Y-down
+    float ry = -y;   // Invert Y: OBJ Y-up -> screen Y-down
     float rz = x * sinY + z * cosY;
 
-    // Rotación X (pitch de cámara)
+    // X rotation (camera pitch)
     float fy = ry * cosP - rz * sinP;
     float fz = ry * sinP + rz * cosP;
 
@@ -135,15 +135,15 @@ static void renderCar2Mesh(int centerX, int centerY,
 
     if (fz > 0.01f) {
       px[i] = centerX + (rx * fov) / fz;
-      py[i] = centerY + (fy * fov) / fz;  // + porque Y ya está invertido
+      py[i] = centerY + (fy * fov) / fz;  // + because Y is already inverted
     } else {
       px[i] = -9999;
       py[i] = -9999;
     }
   }
 
-  // Renderizar triángulos back-to-front (painter's algorithm — Z promedio)
-  // Construir lista ordenable
+  // Render triangles back-to-front (painter's algorithm — average Z)
+  // Build sortable list
   static int order[312];
   static float zdepth[312];
   int ntri = car2_tri_count;
@@ -156,7 +156,7 @@ static void renderCar2Mesh(int centerX, int centerY,
     order[t] = t;
   }
 
-  // Insertion sort (312 elementos — suficientemente rápido)
+  // Insertion sort (312 elements — fast enough)
   for (int i = 1; i < ntri; i++) {
     float kd = zdepth[order[i]];
     int   ki = order[i];
@@ -180,20 +180,20 @@ static void renderCar2Mesh(int centerX, int centerY,
     float bx = px[i1], by = py[i1];
     float cx = px[i2], cy = py[i2];
 
-    // Descartar triángulos con vértices fuera de pantalla (evita rayas)
+    // Discard triangles with vertices outside screen (avoids streaks)
     const float MARGIN = 20.0f;
     if (ax < -MARGIN || ax > SCR_W+MARGIN || bx < -MARGIN || bx > SCR_W+MARGIN ||
         cx < -MARGIN || cx > SCR_W+MARGIN) continue;
     if (ay < -MARGIN || ay > SCR_H+MARGIN || by < -MARGIN || by > SCR_H+MARGIN ||
         cy < -MARGIN || cy > SCR_H+MARGIN) continue;
 
-    // Backface culling (invertido porque Y está negado)
+    // Backface culling (inverted because Y is negated)
     float cross = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
     if (cross <= 0) continue;
 
-    // Iluminación por normal de cara (dot con luz fija desde arriba-frente)
-    float nx = (by-ay)*(0) - (by-ay)*(cy-ay);  // simplificado: luz fija
-    // Normal en espacio objeto
+    // Face normal lighting (dot with fixed light from above-front)
+    float nx = (by-ay)*(0) - (by-ay)*(cy-ay);  // simplified: fixed light
+    // Normal in object space
     float ex1 = car2_verts[i1].x - car2_verts[i0].x;
     float ey1 = car2_verts[i1].y - car2_verts[i0].y;
     float ez1 = car2_verts[i1].z - car2_verts[i0].z;
@@ -205,7 +205,7 @@ static void renderCar2Mesh(int centerX, int centerY,
     float fnz = ex1*ey2 - ey1*ex2;
     float fnlen = sqrtf(fnx*fnx + fny*fny + fnz*fnz);
     if (fnlen > 0.0001f) { fnx/=fnlen; fny/=fnlen; fnz/=fnlen; }
-    // Luz desde arriba y ligeramente desde el frente
+    // Light from above and slightly from the front
     float lx=0.0f, ly=0.7f, lz=-0.7f;
     float dot = fnx*lx + fny*ly + fnz*lz;
     float light = 0.35f + 0.65f * max(0.0f, dot);
@@ -219,14 +219,14 @@ static void renderCar2Mesh(int centerX, int centerY,
 }
 
 // ---------------------------------------------------------------------------
-// API pública
+// Public API
 // ---------------------------------------------------------------------------
 void drawPlayerCar() {
   int centerX = SCR_CX;
   int centerY = SCR_H - 40;
 
-  // Calcular pendiente real de la carretera promediando varios segmentos
-  // para que el auto siga la inclinación suavemente (igual que la cámara)
+  // Calculate actual road slope by averaging several segments
+  // so the car follows the inclination smoothly (same as the camera)
   int segIdx = findSegIdx(position + playerZdist);
   const int SLOPE_SAMPLES = 6;
   float yStart = segments[segIdx].y;
@@ -239,13 +239,13 @@ void drawPlayerCar() {
   smoothPitch += (roadPitch - smoothPitch) * 0.15f;
 
   float rotY  = playerX * 0.5f;
-  // pitch base (cámara desde arriba) + inclinación de la carretera
+  // base pitch (camera from above) + road inclination
   float pitch = 0.28f + smoothPitch;
 
-  // Sombra debajo del auto — elipse oscura aplastada sobre la carretera
-  // Desplazada hacia abajo para que se vea proyectada bajo el chasis
+  // Shadow under the car — dark flattened ellipse on the road
+  // Shifted downward so it appears projected beneath the chassis
   int shadowX  = centerX + (int)(playerX * 30.0f);
-  int shadowY  = SCR_H - 18;   // más arriba para quedar bajo el auto
+  int shadowY  = SCR_H - 18;   // higher up to sit beneath the car
   int shadowRx = 42;
   int shadowRy = 5;
   uint16_t shadowCol = rgb(10, 10, 10);
@@ -285,10 +285,10 @@ void drawStartScreen(float time) {
   spr.setCursor(30, 185);
   spr.print("Car accelerates automatically");
 
-  // Sombra
+  // Shadow
   spr.fillEllipse(SCR_CX, 95, 55, 18, rgb(15, 15, 15));
 
-  // Auto girando en la pantalla de inicio
+  // Car spinning on the start screen
   renderCar2Mesh(SCR_CX, 75, time * 1.5f, 0.5f, 5.0f, 130.0f);
 
   spr.pushSprite(0, 0);

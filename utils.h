@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  FUNCIONES UTILITARIAS
+  UTILITY FUNCTIONS
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -10,34 +10,34 @@
 #include <Arduino.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  FUNCIONES MATEMÁTICAS
+//  MATH FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
-// Limitar valor entre un mínimo y máximo
+// Clamp a value between a minimum and maximum
 float clampF(float v, float lo, float hi);
 
-// Interpolación lineal
+// Linear interpolation
 float lerpF(float a, float b, float t);
 
-// Interpolación con ease-in
+// Ease-in interpolation
 float easeIn(float a, float b, float t);
 
-// Interpolación con ease-in-out
+// Ease-in-out interpolation
 float easeInOut(float a, float b, float t);
 
-// Incrementar valor con wrap-around
+// Increment a value with wrap-around
 float loopIncrease(float v, float inc, float mx);
 
-// Calcular porcentaje restante en un ciclo
+// Calculate remaining percentage in a cycle
 float percentRemaining(float v, float total);
 
-// Encontrar índice de segmento según posición Z
+// Find segment index by Z position
 int findSegIdx(float z);
 
-// Calcular niebla exponencial
+// Calculate exponential fog
 float expFog(float d, float density);
 
-// Verificar superposición entre dos objetos
+// Check overlap between two objects
 bool overlapChk(float x1, float w1, float x2, float w2);
 
 #endif // UTILS_H

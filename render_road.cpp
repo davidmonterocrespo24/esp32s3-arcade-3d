@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE RENDERIZADO DE CARRETERA, TÚNELES Y EDIFICIOS
+  ROAD, TUNNEL, AND BUILDING RENDERING IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -14,7 +14,7 @@
 #include "physics.h"
 #include "render_building.h"
 
-// Variables externas necesarias
+// Required external variables
 extern RenderPt rCache[DRAW_DIST];
 extern int16_t  rClip[DRAW_DIST];
 extern TFT_eSprite bgSpr;
@@ -30,7 +30,7 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
   if (bottomY <= 0 || sx < -60 || sx > SCR_W + 60) return;
 
   switch (type) {
-    case 0: { // Pino
+    case 0: { // Pine
       int h = (int)(scale * 28000);
       int w = (int)(scale * 10000);
       if (h < 3 || w < 2) return;
@@ -40,7 +40,7 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
       spr.fillTriangle(sx, bottomY - h, sx - w / 2, bottomY - trunkH, sx + w / 2, bottomY - trunkH, gc);
       break;
     }
-    case 1: { // Árbol redondeado
+    case 1: { // Rounded tree
       int h = (int)(scale * 26000);
       int w = (int)(scale * 12000);
       if (h < 3 || w < 2) return;
@@ -51,19 +51,19 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
       spr.fillCircle(sx, bottomY - trunkH - leafR / 2, leafR, lc);
       break;
     }
-    case 2: { // Arbusto
+    case 2: { // Bush
       int r = max(2, (int)(scale * 6000));
       uint16_t bc = (timeOfDay == 2) ? rgb(0, 48, 10) : rgb(20, 130, 20);
       spr.fillCircle(sx, bottomY - r, r, bc);
       break;
     }
-    case 3: { // Roca
+    case 3: { // Rock
       int rh = max(2, (int)(scale * 6000));
       int rw = max(3, (int)(scale * 8000));
       spr.fillRect(sx - rw / 2, bottomY - rh, rw, rh, rgb(100, 95, 90));
       break;
     }
-    case 4: { // Poste
+    case 4: { // Post
       int ph = max(3, (int)(scale * 14000));
       int pw = max(2, 3);
       spr.fillRect(sx - pw / 2, bottomY - ph, pw, ph, TFT_WHITE);
@@ -77,28 +77,28 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
 void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) {
   int pSegIdx = findSegIdx(position + playerZdist);
 
-  // --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
+  // --- INFINITE PARALLAX EFFECT (Horizon Chase style) ---
 
-  // Fallback si la PSRAM falló
+  // Fallback if PSRAM failed
   if (!bgCreated) {
-    // Dibujar cielo plano simple para evitar fondo negro/basura
+    // Draw simple flat sky to avoid black/garbage background
     uint16_t fallbackTop = rgb(40, 40, 80);
     uint16_t fallbackBot = rgb(150, 100, 150);
-    // Degradado manual simple (rectangulos)
+    // Simple manual gradient (rectangles)
     spr.fillRect(0, 0, SCR_W, SCR_CY/2, fallbackTop);
     spr.fillRect(0, SCR_CY/2, SCR_W, SCR_CY/2, fallbackBot);
   } else {
-    // Calculamos desplazamiento X con wrap-around sobre buffer doble (640px)
+    // Calculate X offset with wrap-around over double buffer (640px)
     int bgX = (int)skyOffset % (SCR_W * 2);
-    while (bgX < 0) bgX += (SCR_W * 2); // Asegurar positivo
+    while (bgX < 0) bgX += (SCR_W * 2); // Ensure positive
 
-    // Dibujamos el fondo DOS VECES para seamless scrolling
-    // El buffer tiene 640px de ancho, así que el sol (en x=320) solo se ve una vez en pantalla (320px)
+    // Draw background TWICE for seamless scrolling
+    // The buffer is 640px wide, so the sun (at x=320) is only visible once on screen (320px)
     bgSpr.pushToSprite(&spr, -bgX, 0);
     bgSpr.pushToSprite(&spr, (SCR_W * 2) - bgX, 0);
   }
 
-  // Estrellas por la noche (opcional, sobre el parallax)
+  // Stars at night (optional, on top of parallax)
   if (timeOfDay == 2) {
     static const uint16_t PROGMEM stX[] = {15,45,78,120,155,190,225,260,290,310,33,67,105,145,185,230,275};
     static const uint8_t PROGMEM stY[] = {8,25,15,5,30,12,22,8,18,28,40,48,35,50,42,55,38};
@@ -107,7 +107,7 @@ void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) 
     }
   }
 
-  // Línea de horizonte
+  // Horizon line
   spr.drawFastHLine(0, SCR_CY, SCR_W, rgb(100, 100, 100));
 }
 
@@ -127,8 +127,8 @@ void drawRoad(float position, float playerX, float playerZdist,
 
   float curveX  = 0;
   float curveDX = -(segments[baseIdx].curve * basePct);
-  int maxy = SCR_H; // Horizonte del suelo (sube)
-  int minCeilY = 0; // Horizonte del techo (baja)
+  int maxy = SCR_H; // Ground horizon (rises)
+  int minCeilY = 0; // Ceiling horizon (lowers)
 
   for (int n = 0; n < DRAW_DIST; n++) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
@@ -188,21 +188,21 @@ void drawRoad(float position, float playerX, float playerZdist,
     uint16_t rumble = lerpCol(isLight ? colRumbleL : colRumbleD, colFog, seg.tunnel ? 0 : fogF);
     uint16_t lane   = lerpCol(colLane, colFog, seg.tunnel ? 0 : fogF);
 
-    // TECHO DEL TÚNEL: Se dibuja en el loop 3D (back-to-front) junto con las paredes
+    // TUNNEL CEILING: Drawn in the 3D loop (back-to-front) along with the walls
 
-    // Guardamos info para dibujar después (no dibujamos la carretera aquí)
+    // Save info to draw later (we don't draw the road here)
     maxy = drawTop;
   }
 
   if (maxy > SCR_CY) {
-    // Relleno de suelo (solo si no es túnel, o si, para evitar huecos)
+    // Ground fill (even in tunnels, to avoid gaps)
      spr.fillRect(0, SCR_CY, SCR_W, maxy - SCR_CY, lerpCol(colGrassD, colFog, 0.7));
   }
 
-  // --- RENDERIZADO 3D UNIFICADO: back-to-front —
-  // Edificios, túnel y carretera se dibujan en el mismo loop para que el painter's
-  // algorithm funcione correctamente en subidas/bajadas.
-  // rClip[n] contiene el maxy calculado en el loop de proyección anterior.
+  // --- UNIFIED 3D RENDERING: back-to-front ---
+  // Buildings, tunnel, and road are drawn in the same loop so the painter's
+  // algorithm works correctly on hills and dips.
+  // rClip[n] contains the maxy calculated in the previous projection loop.
   for (int n = DRAW_DIST - 1; n > 0; n--) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
     int prevIdx = (sIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
@@ -214,7 +214,7 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     if (p0.scale <= 0 || p1.scale <= 0) continue;
 
-    // ── TÚNEL EN 3D ──────────────────────────────────────────────────────────
+    // ── TUNNEL IN 3D ──────────────────────────────────────────────────────────
     if (seg.tunnel) {
        bool isLightT = ((sIdx / 3) % 2) == 0;
        float fogT = expFog((float)n / DRAW_DIST, FOG_DENSITY);
@@ -241,7 +241,7 @@ void drawRoad(float position, float playerX, float playerZdist,
        drawQuad(roadL0, p0.y, roadL1, p1.y, roadL1, cy1, roadL0, cy0, wallT);
        drawQuad(roadR0, p0.y, roadR0, cy0, roadR1, cy1, roadR1, p1.y, wallT);
 
-       // LUCES DEL TECHO — rectángulos amarillos cada 4 segmentos
+       // CEILING LIGHTS — yellow rectangles every 4 segments
        if ((sIdx % 4) == 0) {
          int lx0 = (roadL0 + roadR0) / 2;
          int lx1 = (roadL1 + roadR1) / 2;
@@ -261,7 +261,7 @@ void drawRoad(float position, float playerX, float playerZdist,
        }
     }
 
-    // ── EDIFICIOS (solo fuera del túnel) ─────────────────────────────────────
+    // ── BUILDINGS (only outside tunnel) ─────────────────────────────────────
     if (!seg.tunnel) {
       if (seg.buildL > 0) {
          bool showFront = (prevSeg.buildL == 0 || prevSeg.buildL != seg.buildL) && !prevSeg.tunnel;
@@ -273,7 +273,7 @@ void drawRoad(float position, float playerX, float playerZdist,
       }
     }
 
-    // ── CARRETERA DE ESTE SEGMENTO ────────────────────────────────────────────
+    // ── ROAD FOR THIS SEGMENT ────────────────────────────────────────────
     int drawTop = max((int)p1.y, 0);
     int drawBot = min((int)p0.y, (int)rClip[n - 1]);
     int bandH = drawBot - drawTop;
@@ -325,7 +325,7 @@ void drawRoad(float position, float playerX, float playerZdist,
       if (b3 > a3) spr.fillRect(a3, subTop, b3 - a3, subH, road);
     }
 
-    // Líneas de carril
+    // Lane lines
     if (isLight && p0.w > 15 && bandH > 1) {
       int midX = (p0.x + p1.x) / 2;
       int midW = (p0.w + p1.w) / 2;
@@ -340,7 +340,7 @@ void drawRoad(float position, float playerX, float playerZdist,
     }
   }
 
-  // --- TERCER PASO: SPRITES Y TRÁFICO ENCIMA DE TODO ---
+  // --- THIRD PASS: SPRITES AND TRAFFIC ON TOP OF EVERYTHING ---
   for (int n = DRAW_DIST - 1; n > 1; n--) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
     Segment& seg = segments[sIdx];
@@ -348,13 +348,13 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     if (p1.scale <= 0 || p1.y >= SCR_H) continue;
 
-    // Sprites normales
+    // Normal sprites
     if (seg.spriteType >= 0) {
       int sprX = p1.x + (int)(p1.scale * seg.spriteOffset * ROAD_W * SCR_CX);
       drawSpriteShape(seg.spriteType, sprX, p1.y, p1.scale, rClip[n], timeOfDay);
     }
 
-    // Tráfico
+    // Traffic
     for (int c = 0; c < MAX_CARS; c++) {
       if (findSegIdx(trafficCars[c].z) != sIdx) continue;
       int carX = p1.x + (int)(p1.scale * trafficCars[c].offset * ROAD_W * SCR_CX);

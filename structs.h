@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  ESTRUCTURAS DE DATOS DEL JUEGO
+  GAME DATA STRUCTURES
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -10,36 +10,36 @@
 #include <Arduino.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  ESTRUCTURA DE SEGMENTO DE PISTA
+//  TRACK SEGMENT STRUCTURE
 // ═══════════════════════════════════════════════════════════════
 struct Segment {
-  float curve;              // Curvatura del segmento
-  float y;                  // Altura (elevación)
-  int8_t spriteType;        // Tipo de sprite (-1 = ninguno)
-  float  spriteOffset;      // Desplazamiento lateral del sprite
+  float curve;              // Segment curvature
+  float y;                  // Height (elevation)
+  int8_t spriteType;        // Sprite type (-1 = none)
+  float  spriteOffset;      // Lateral sprite offset
 
-  // -- PROPIEDADES 3D POLIGONAL --
-  bool   tunnel;            // true = dentro de túnel
-  int    buildL, buildR;    // Altura edificio Izq/Der (0 = sin edificio)
-  uint16_t colorL, colorR;  // Color fachada del edificio
+  // -- 3D POLYGONAL PROPERTIES --
+  bool   tunnel;            // true = inside tunnel
+  int    buildL, buildR;    // Left/Right building height (0 = no building)
+  uint16_t colorL, colorR;  // Building facade color
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  PUNTO DE RENDERIZADO
+//  RENDER POINT
 // ═══════════════════════════════════════════════════════════════
 struct RenderPt {
-  int16_t x, y, w;          // Posición en pantalla y ancho
-  float   scale;            // Factor de escala
+  int16_t x, y, w;          // Screen position and width
+  float   scale;            // Scale factor
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  COCHE DE TRÁFICO
+//  TRAFFIC CAR
 // ═══════════════════════════════════════════════════════════════
 struct TrafficCar {
-  float    offset;          // Desplazamiento lateral (-1 a 1)
-  float    z;               // Posición en la pista
-  float    speed;           // Velocidad del coche
-  uint16_t color;           // Color del coche
+  float    offset;          // Lateral offset (-1 to 1)
+  float    z;               // Position on track
+  float    speed;           // Car speed
+  uint16_t color;           // Car color
 };
 
 #endif // STRUCTS_H
