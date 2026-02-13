@@ -1,6 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════
   IMPLEMENTACIÓN DE RENDERIZADO DEL AUTO DEL JUGADOR
+  Renderizado 3D con malla OBJ + textura RGB565
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -9,116 +10,224 @@
 #include "config.h"
 #include "colors.h"
 #include "physics.h"
+#include "track.h"
+#include "utils.h"
+#include "car2_mesh.h"
+#include "car2_texture.h"
 
-void drawPlayerCar() {
-  int carCenterX = SCR_CX;
-  int carCenterY = SCR_H - 15;
+// ---------------------------------------------------------------------------
+// Rasterizador de triángulo texturizado (affine mapping, scanline)
+// ---------------------------------------------------------------------------
+static void drawTexturedTri(
+    float ax, float ay, float au, float av,
+    float bx, float by, float bu, float bv,
+    float cx, float cy, float cu, float cv,
+    float light)
+{
+  // Ordenar vértices por Y ascendente (a <= b <= c)
+  if (ay > by) { float t; t=ax;ax=bx;bx=t; t=ay;ay=by;by=t; t=au;au=bu;bu=t; t=av;av=bv;bv=t; }
+  if (ay > cy) { float t; t=ax;ax=cx;cx=t; t=ay;ay=cy;cy=t; t=au;au=cu;cu=t; t=av;av=cv;cv=t; }
+  if (by > cy) { float t; t=bx;bx=cx;cx=t; t=by;by=cy;cy=t; t=bu;bu=cu;cu=t; t=bv;bv=cv;cv=t; }
 
-  // --- MOTOR 3D ---
-  // Invertido: +playerX para que se incline al lado opuesto del giro
-  float angle = (playerX * 0.22f) + PI;
-  float cosA = cos(angle);
-  float sinA = sin(angle);
+  int yA = (int)ay, yB = (int)by, yC = (int)cy;
+  yA = max(yA, 0); yC = min(yC, SCR_H - 1);
 
-  // Vértices derivados del OBJ Car2.obj (escala 21: 1 unidad OBJ = 21 render units)
-  // Bounding box OBJ: X:±1.25, Y:0.29-2.17, Z:-3.20(frente) a +3.04(trasera)
-  float verts[28][3] = {
-    // --- CHASIS INFERIOR (0-7) ---
-    {-26,  4, -67}, { 26,  4, -67}, { 26,  4,  64}, {-26,  4,  64}, // Base
-    {-26, 14, -67}, { 26, 14, -67}, { 26, 19,  64}, {-26, 19,  64}, // Perfil lateral superior
+  for (int y = yA; y <= yC; y++) {
+    // Calcular bordes izq/der y UVs interpolados
+    float t_AC = (yC != (int)ay) ? (float)(y - ay) / (cy - ay) : 0.0f;
+    float xAC = ax + t_AC * (cx - ax);
+    float uAC = au + t_AC * (cu - au);
+    float vAC = av + t_AC * (cv - av);
 
-    // --- CABINA Y VIDRIOS (8-15) ---
-    {-26, 19, -32}, { 26, 19, -32}, { 26, 19,  28}, {-26, 19,  28}, // Base cabina
-    {-22, 38, -35}, { 22, 38, -35}, { 22, 38,   7}, {-22, 38,   7}, // Techo
+    float xL, xR, uL, uR, vL, vR;
+    if (y < yB) {
+      float t_AB = (yB != (int)ay) ? (float)(y - ay) / (by - ay) : 0.0f;
+      float xAB = ax + t_AB * (bx - ax);
+      float uAB = au + t_AB * (bu - au);
+      float vAB = av + t_AB * (bv - av);
+      if (xAC < xAB) { xL=xAC; xR=xAB; uL=uAC; uR=uAB; vL=vAC; vR=vAB; }
+      else            { xL=xAB; xR=xAC; uL=uAB; uR=uAC; vL=vAB; vR=vAC; }
+    } else {
+      float t_BC = (yC != yB) ? (float)(y - by) / (cy - by) : 0.0f;
+      float xBC = bx + t_BC * (cx - bx);
+      float uBC = bu + t_BC * (cu - bu);
+      float vBC = bv + t_BC * (cv - bv);
+      if (xAC < xBC) { xL=xAC; xR=xBC; uL=uAC; uR=uBC; vL=vAC; vR=vBC; }
+      else            { xL=xBC; xR=xAC; uL=uBC; uR=uAC; vL=vBC; vR=vAC; }
+    }
 
-    // --- ALERÓN TRASERO (16-27) ---
-    {-30, 19, 56}, {-26, 19, 56}, {-26, 26, 56}, {-30, 26, 56}, // Poste izquierdo
-    { 26, 19, 56}, { 30, 19, 56}, { 30, 26, 56}, { 26, 26, 56}, // Poste derecho
-    {-34, 26, 54}, { 34, 26, 54}, { 34, 30, 54}, {-34, 30, 54}  // Placa alerón
-  };
+    int x0 = max((int)xL, 0);
+    int x1 = min((int)xR, SCR_W - 1);
+    float dx = (xR - xL > 0.001f) ? 1.0f / (xR - xL) : 0.0f;
 
-  float sx[28], sy[28];
+    for (int x = x0; x <= x1; x++) {
+      float t = (x - xL) * dx;
+      float u = uL + t * (uR - uL);
+      float v = vL + t * (vR - vL);
 
-  // Proyección
-  for (int i = 0; i < 28; i++) {
-    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
-    float ry = verts[i][1];
-    float rz = verts[i][0] * sinA + verts[i][2] * cosA;
+      // Sample textura (clamp)
+      int tx = (int)(u * (CAR2_TEX_W - 1));
+      int ty = (int)((1.0f - v) * (CAR2_TEX_H - 1));  // flip V (OBJ es bottom-up)
+      tx = max(0, min(tx, CAR2_TEX_W - 1));
+      ty = max(0, min(ty, CAR2_TEX_H - 1));
 
-    float pitch = -0.25f; // Inclinación más pronunciada hacia arriba
-    float camY = ry * cos(pitch) - rz * sin(pitch);
-    float camZ = ry * sin(pitch) + rz * cos(pitch);
+#ifdef ARDUINO
+      uint16_t texel = pgm_read_word(&car2_texture[ty * CAR2_TEX_W + tx]);
+#else
+      uint16_t texel = car2_texture[ty * CAR2_TEX_W + tx];
+#endif
 
-    camZ += 200.0f;
-    float fov = 200.0f;
+      // Aplicar iluminación simple (multiplicar canales)
+      if (light < 0.99f) {
+        uint8_t r = ((texel >> 11) & 0x1F);
+        uint8_t g = ((texel >>  5) & 0x3F);
+        uint8_t b = ( texel        & 0x1F);
+        r = (uint8_t)(r * light);
+        g = (uint8_t)(g * light);
+        b = (uint8_t)(b * light);
+        texel = (r << 11) | (g << 5) | b;
+      }
 
-    sx[i] = carCenterX + (rx * fov) / camZ;
-    sy[i] = carCenterY - (camY * fov) / camZ;
+      spr.drawPixel(x, y, texel);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Proyectar y renderizar la malla Car2 completa
+// ---------------------------------------------------------------------------
+static void renderCar2Mesh(int centerX, int centerY,
+                            float rotY, float pitch, float camDist, float fov)
+{
+  float cosY = cosf(rotY), sinY = sinf(rotY);
+  float cosP = cosf(pitch), sinP = sinf(pitch);
+
+  // Proyectar todos los vértices
+  static float px[428], py[428], pz[428];
+
+  for (int i = 0; i < car2_vert_count; i++) {
+    float x = car2_verts[i].x;
+    float y = car2_verts[i].y;
+    float z = car2_verts[i].z;
+
+    // Bajar el modelo para que las ruedas queden al fondo (Y suelo ~0)
+    // Desplazar para que el centro visual quede en ~0.8 (entre ruedas y techo)
+    y -= 0.5f;
+
+    // Rotación Y (yaw) — negada para orientación correcta
+    float rx = x * cosY - z * sinY;
+    float ry = -y;   // Invertir Y: OBJ Y-up → pantalla Y-down
+    float rz = x * sinY + z * cosY;
+
+    // Rotación X (pitch de cámara)
+    float fy = ry * cosP - rz * sinP;
+    float fz = ry * sinP + rz * cosP;
+
+    fz += camDist;
+    pz[i] = fz;
+
+    if (fz > 0.01f) {
+      px[i] = centerX + (rx * fov) / fz;
+      py[i] = centerY + (fy * fov) / fz;  // + porque Y ya está invertido
+    } else {
+      px[i] = -9999;
+      py[i] = -9999;
+    }
   }
 
-  // Backface Culling
-  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t col) {
-    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
-    if (cross > 0) {
-      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], col);
+  // Renderizar triángulos back-to-front (painter's algorithm — Z promedio)
+  // Construir lista ordenable
+  static int order[312];
+  static float zdepth[312];
+  int ntri = car2_tri_count;
+
+  for (int t = 0; t < ntri; t++) {
+    int i0 = car2_indices[t*3+0];
+    int i1 = car2_indices[t*3+1];
+    int i2 = car2_indices[t*3+2];
+    zdepth[t] = (pz[i0] + pz[i1] + pz[i2]) / 3.0f;
+    order[t] = t;
+  }
+
+  // Insertion sort (312 elementos — suficientemente rápido)
+  for (int i = 1; i < ntri; i++) {
+    float kd = zdepth[order[i]];
+    int   ki = order[i];
+    int j = i - 1;
+    while (j >= 0 && zdepth[order[j]] < kd) {
+      order[j+1] = order[j];
+      j--;
     }
-  };
+    order[j+1] = ki;
+  }
 
-  // Colores
-  uint16_t hoodRed  = rgb(255, 60, 60);
-  uint16_t bodyRed  = rgb(210, 30, 30);
-  uint16_t darkRed  = rgb(140, 20, 20);
-  uint16_t glassCol = rgb(80, 180, 255);
-  uint16_t grillCol = rgb(30, 30, 30);
+  for (int ti = 0; ti < ntri; ti++) {
+    int t  = order[ti];
+    int i0 = car2_indices[t*3+0];
+    int i1 = car2_indices[t*3+1];
+    int i2 = car2_indices[t*3+2];
 
-  // --- ORDEN DE DIBUJADO CORRECTO (De adelante hacia atrás) ---
+    if (pz[i0] < 0.01f || pz[i1] < 0.01f || pz[i2] < 0.01f) continue;
 
-  // 1. Frente y Base
-  drawFace(4, 5, 1, 0, grillCol); // Parrilla Frontal
-  drawFace(0, 1, 2, 3, darkRed);  // Base Chasis
+    float ax = px[i0], ay = py[i0];
+    float bx = px[i1], by = py[i1];
+    float cx = px[i2], cy = py[i2];
 
-  // 2. Laterales y Capó
-  drawFace(7, 4, 0, 3, bodyRed);  // Lateral Izq
-  drawFace(5, 6, 2, 1, bodyRed);  // Lateral Der
-  drawFace(7, 6, 5, 4, hoodRed);  // Cubierta Superior (Maletero/Capó)
+    // Backface culling (invertido porque Y está negado)
+    float cross = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+    if (cross <= 0) continue;
 
-  // 3. Cabina (Interiores)
-  drawFace(12, 13, 9, 8, glassCol);   // Parabrisas
-  drawFace(15, 12, 8, 11, bodyRed);   // Puerta Izq
-  drawFace(13, 14, 10, 9, bodyRed);   // Puerta Der
-  drawFace(15, 14, 13, 12, hoodRed);  // Techo
+    // Iluminación por normal de cara (dot con luz fija desde arriba-frente)
+    float nx = (by-ay)*(0) - (by-ay)*(cy-ay);  // simplificado: luz fija
+    // Normal en espacio objeto
+    float ex1 = car2_verts[i1].x - car2_verts[i0].x;
+    float ey1 = car2_verts[i1].y - car2_verts[i0].y;
+    float ez1 = car2_verts[i1].z - car2_verts[i0].z;
+    float ex2 = car2_verts[i2].x - car2_verts[i0].x;
+    float ey2 = car2_verts[i2].y - car2_verts[i0].y;
+    float ez2 = car2_verts[i2].z - car2_verts[i0].z;
+    float fnx = ey1*ez2 - ez1*ey2;
+    float fny = ez1*ex2 - ex1*ez2;
+    float fnz = ex1*ey2 - ey1*ex2;
+    float fnlen = sqrtf(fnx*fnx + fny*fny + fnz*fnz);
+    if (fnlen > 0.0001f) { fnx/=fnlen; fny/=fnlen; fnz/=fnlen; }
+    // Luz desde arriba y ligeramente desde el frente
+    float lx=0.0f, ly=0.7f, lz=-0.7f;
+    float dot = fnx*lx + fny*ly + fnz*lz;
+    float light = 0.35f + 0.65f * max(0.0f, dot);
 
-  // 4. Traseras (Lo que está más pegado a la cámara)
-  drawFace(14, 15, 11, 10, grillCol); // Vidrio Trasero
-  drawFace(6, 7, 3, 2, darkRed);      // Parachoques Trasero
+    drawTexturedTri(
+      ax, ay, car2_verts[i0].u, car2_verts[i0].v,
+      bx, by, car2_verts[i1].u, car2_verts[i1].v,
+      cx, cy, car2_verts[i2].u, car2_verts[i2].v,
+      light);
+  }
+}
 
-  // 5. ALERÓN TRASERO MEJORADO (Más visible y robusto)
-  uint16_t spoilerCol = rgb(30, 30, 30);   // Negro mate para la placa
-  uint16_t spoilerDark = rgb(15, 15, 15);  // Negro más oscuro para sombras
+// ---------------------------------------------------------------------------
+// API pública
+// ---------------------------------------------------------------------------
+void drawPlayerCar() {
+  int centerX = SCR_CX;
+  int centerY = SCR_H - 40;
 
-  // POSTES DE SOPORTE
-  // Poste izquierdo (6 caras para máxima visibilidad)
-  drawFace(16, 17, 18, 19, darkRed);      // Cara frontal del poste izq
-  drawFace(17, 18, 22, 21, bodyRed);      // Cara interior del poste izq
-  drawFace(19, 18, 22, 23, bodyRed);      // Cara superior del poste izq
+  // Calcular pendiente de la carretera para inclinar el auto
+  int segIdx  = findSegIdx(position + playerZdist);
+  int prevIdx = (segIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS;
+  float slope = (segments[segIdx].y - segments[prevIdx].y) / SEG_LEN;
+  // Convertir pendiente a ángulo de pitch del auto (negativo = sube = inclina hacia arriba)
+  float roadPitch = atanf(slope * 0.8f);
 
-  // Poste derecho
-  drawFace(20, 21, 22, 23, darkRed);      // Cara frontal del poste der
-  drawFace(20, 21, 17, 16, bodyRed);      // Cara interior del poste der
-  drawFace(22, 23, 19, 18, bodyRed);      // Cara superior del poste der
+  float rotY  = playerX * 0.22f;
+  // pitch base (cámara desde arriba) + inclinación de la carretera
+  float pitch = 0.28f + roadPitch;
 
-  // PLACA DEL ALERÓN (Superficie grande y visible)
-  drawFace(24, 25, 26, 27, spoilerCol);   // Superficie superior (negro mate)
-  drawFace(27, 26, 25, 24, spoilerDark);  // Superficie inferior (más oscura)
-  drawFace(24, 25, 21, 17, darkRed);      // Borde frontal
-  drawFace(27, 24, 16, 19, bodyRed);      // Borde lateral izquierdo
-  drawFace(25, 26, 22, 21, bodyRed);      // Borde lateral derecho
+  renderCar2Mesh(centerX, centerY, rotY, pitch, 6.5f, 130.0f);
 }
 
 void drawStartScreen(float time) {
   spr.fillSprite(TFT_BLACK);
 
-  // --- TEXTOS DE LA PANTALLA ---
   spr.fillRect(0, 100, SCR_W, 3, TFT_RED);
   spr.fillRect(0, 105, SCR_W, 3, TFT_WHITE);
 
@@ -139,107 +248,11 @@ void drawStartScreen(float time) {
   spr.setCursor(30, 185);
   spr.print("Car accelerates automatically");
 
-  // --- SOMBRA (Dibuja el suelo debajo del coche) ---
-  int carCenterX = SCR_CX;
-  int carCenterY = 85;
-  spr.fillEllipse(carCenterX, carCenterY + 40, 55, 18, rgb(15, 15, 15));
+  // Sombra
+  spr.fillEllipse(SCR_CX, 95, 55, 18, rgb(15, 15, 15));
 
-  // --- MOTOR 3D REAL ---
-  float angle = time * 1.5f; // Velocidad de giro
-  float cosA = cos(angle);
-  float sinA = sin(angle);
-
-  // Vértices derivados del OBJ Car2.obj (escala 21)
-  float verts[28][3] = {
-    // --- CHASIS INFERIOR (0-7) ---
-    {-26,  4, -67}, { 26,  4, -67}, { 26,  4,  64}, {-26,  4,  64},
-    {-26, 14, -67}, { 26, 14, -67}, { 26, 19,  64}, {-26, 19,  64},
-
-    // --- CABINA Y VIDRIOS (8-15) ---
-    {-26, 19, -32}, { 26, 19, -32}, { 26, 19,  28}, {-26, 19,  28},
-    {-22, 38, -35}, { 22, 38, -35}, { 22, 38,   7}, {-22, 38,   7},
-
-    // --- ALERÓN TRASERO (16-27) ---
-    {-30, 19, 56}, {-26, 19, 56}, {-26, 26, 56}, {-30, 26, 56},
-    { 26, 19, 56}, { 30, 19, 56}, { 30, 26, 56}, { 26, 26, 56},
-    {-34, 26, 54}, { 34, 26, 54}, { 34, 30, 54}, {-34, 30, 54}
-  };
-
-  float sx[28], sy[28];
-
-  // Matemáticas de Proyección
-  for (int i = 0; i < 28; i++) {
-    // 1. Rotación sobre el eje Y (Giro del auto)
-    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
-    float ry = verts[i][1];
-    float rz = verts[i][0] * sinA + verts[i][2] * cosA;
-
-    // 2. Inclinación de la cámara (Mirar ligeramente desde arriba)
-    float pitch = 0.4f;
-    float camY = ry * cos(pitch) - rz * sin(pitch);
-    float camZ = ry * sin(pitch) + rz * cos(pitch);
-
-    // 3. Alejar el objeto y aplicar la división de perspectiva
-    camZ += 150.0f;
-    float fov = 160.0f;
-
-    // Proyección final al monitor 2D
-    sx[i] = carCenterX + (rx * fov) / camZ;
-    sy[i] = carCenterY - (camY * fov) / camZ;
-  }
-
-  // --- LÓGICA DE DIBUJADO (CULLING) ---
-  // Calcula el producto cruzado. Si los vértices giran en sentido horario en la pantalla, la cara es visible.
-  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t col) {
-    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
-    if (cross > 0) {
-      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], col);
-    }
-  };
-
-  // Paleta de colores para el sombreado falso
-  uint16_t hoodRed  = rgb(255, 60, 60);  // Rojo iluminado (Capó y Techo)
-  uint16_t bodyRed  = rgb(210, 30, 30);  // Rojo lateral
-  uint16_t darkRed  = rgb(140, 20, 20);  // Rojo oscuro (Atrás)
-  uint16_t glassCol = rgb(80, 180, 255); // Azul cielo (Parabrisas)
-  uint16_t grillCol = rgb(30, 30, 30);   // Gris oscuro (Parrilla y vidrio trasero)
-
-  // 1. Dibujamos el cuerpo principal primero
-  drawFace(0, 1, 2, 3, darkRed);  // Base del chasis
-  drawFace(7, 4, 0, 3, bodyRed);  // Lateral Izquierdo
-  drawFace(5, 6, 2, 1, bodyRed);  // Lateral Derecho
-  drawFace(6, 7, 3, 2, darkRed);  // Parte Trasera
-  drawFace(4, 5, 1, 0, grillCol); // Frontal (Parrilla oscura)
-  drawFace(7, 6, 5, 4, hoodRed);  // Capó y maletero
-
-  // 2. Dibujamos la cabina encima (El orden garantiza que no haya glitches)
-  drawFace(15, 12, 8, 11, bodyRed);   // Puerta izquierda
-  drawFace(13, 14, 10, 9, bodyRed);   // Puerta derecha
-  drawFace(14, 15, 11, 10, grillCol); // Vidrio trasero
-  drawFace(12, 13, 9, 8, glassCol);   // Parabrisas frontal azul
-  drawFace(15, 14, 13, 12, hoodRed);  // Techo rojo
-
-  // 3. ALERÓN TRASERO MEJORADO (Más visible y robusto)
-  uint16_t spoilerCol = rgb(30, 30, 30);   // Negro mate para la placa
-  uint16_t spoilerDark = rgb(15, 15, 15);  // Negro más oscuro para sombras
-
-  // POSTES DE SOPORTE
-  // Poste izquierdo (múltiples caras para máxima visibilidad)
-  drawFace(16, 17, 18, 19, darkRed);      // Cara frontal del poste izq
-  drawFace(17, 18, 22, 21, bodyRed);      // Cara interior del poste izq
-  drawFace(19, 18, 22, 23, bodyRed);      // Cara superior del poste izq
-
-  // Poste derecho
-  drawFace(20, 21, 22, 23, darkRed);      // Cara frontal del poste der
-  drawFace(20, 21, 17, 16, bodyRed);      // Cara interior del poste der
-  drawFace(22, 23, 19, 18, bodyRed);      // Cara superior del poste der
-
-  // PLACA DEL ALERÓN (Superficie grande y visible)
-  drawFace(24, 25, 26, 27, spoilerCol);   // Superficie superior (negro mate)
-  drawFace(27, 26, 25, 24, spoilerDark);  // Superficie inferior (más oscura)
-  drawFace(24, 25, 21, 17, darkRed);      // Borde frontal
-  drawFace(27, 24, 16, 19, bodyRed);      // Borde lateral izquierdo
-  drawFace(25, 26, 22, 21, bodyRed);      // Borde lateral derecho
+  // Auto girando en la pantalla de inicio
+  renderCar2Mesh(SCR_CX, 75, time * 1.5f, 0.5f, 5.0f, 130.0f);
 
   spr.pushSprite(0, 0);
 }
