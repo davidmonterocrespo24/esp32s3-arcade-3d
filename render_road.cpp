@@ -337,7 +337,8 @@ void drawRoad(float position, float playerX, float playerZdist,
        uint16_t roadCeilD = isLightCeil ? colRoadD : colRoadL;
        uint16_t ceilColor = isLightCeil ? roadCeilL : roadCeilD;
 
-       float cH = 9000.0f;
+       // Altura del techo
+       float cH = 4500.0f;
        int cy1 = SCR_CY - (int)(p1.scale * (seg.y + cH - camY) * SCR_CY);
        int cy0 = SCR_CY - (int)(p0.scale * (prevSeg.y + cH - camY) * SCR_CY);
 
@@ -427,16 +428,23 @@ void drawRoad(float position, float playerX, float playerZdist,
       int rmL = rdL - rw, rmR = rdR + rw;
 
       if (seg.tunnel) {
-        // En el túnel: NO dibujar paredes en la zona del techo (arriba de SCR_CY)
-        // Solo dibujar las paredes en la zona inferior (desde SCR_CY hacia abajo)
-        int wallDrawTop = max(subTop, SCR_CY);
-        int wallDrawBot = subBot;
-        int wallH = wallDrawBot - wallDrawTop;
+        // PAREDES LATERALES DEL TÚNEL — fillRect por scanline = siempre 90° con la carretera
+        bool iLightT = ((sIdx / 3) % 2) == 0;
+        uint16_t wCol = iLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);
 
-        if (wallH > 0 && !seg.tunnel) {
-          if (rdL > 0) spr.fillRect(0, wallDrawTop, rdL, wallH, grass);
-          if (rdR < SCR_W) spr.fillRect(rdR, wallDrawTop, SCR_W - rdR, wallH, grass);
-        }
+        // Ancho de pared proporcional al segmento (perspectiva correcta)
+        int wallW = max(2, hw / 5);
+
+        // Pared izquierda: rellena desde borde izq hasta el límite de la pantalla
+        int wlR = max(0, min(rdL, SCR_W));
+        int wlL = max(0, rdL - wallW);
+        if (wlR > wlL) spr.fillRect(wlL, subTop, wlR - wlL, subH, wCol);
+
+        // Pared derecha: rellena desde borde der hasta el límite de la pantalla
+        int wrL = max(0, min(rdR, SCR_W));
+        int wrR = min(SCR_W, rdR + wallW);
+        if (wrR > wrL) spr.fillRect(wrL, subTop, wrR - wrL, subH, wCol);
+
       } else if (!seg.tunnel) {
         int s1 = max(0, min(rmL, SCR_W));
         if (s1 > 0) spr.fillRect(0, subTop, s1, subH, grass);
