@@ -41,7 +41,35 @@
 #define RANDOM_TRACK 1
 
 // ═══════════════════════════════════════════════════════════════
-//  CONSTANTES DE TRÁFICO
+//  FÍSICA DEL AUTO
+// ═══════════════════════════════════════════════════════════════
+#define SPEED_MULTIPLIER   65.0f   // maxSpeed = SEG_LEN * SPEED_MULTIPLIER (~246 km/h)
+#define ACCEL_TARGET       0.9f    // targetAccel = maxSpeed * ACCEL_TARGET
+#define ACCEL_RAMP         180.0f  // Qué tan rápido sube la aceleración (u/s²)
+#define ACCEL_NEAR_MAX     0.90f   // Umbral de velocidad para reducir aceleración
+#define ACCEL_DAMPING      0.97f   // Multiplicador al acercarse a maxSpeed
+#define FRICTION           0.996f  // Fricción por frame (frenado ~3.3s desde max)
+#define GRAVITY_FACTOR     1600.0f // Efecto de pendientes en aceleración
+#define CENTRIFUGAL        0.18f   // Fuerza centrífuga en curvas
+#define CURVE_FORCE        3.0f    // Multiplicador de fuerza lateral en curvas
+#define LATERAL_FRICTION   0.90f   // Amortiguación de velocidad lateral por frame
+#define STEER_AUTO         1.8f    // Respuesta del autopiloto a las curvas
+#define CENTRIFUGAL_DX     1.5f    // Factor de empuje centrífugo lateral
+
+// ═══════════════════════════════════════════════════════════════
+//  EDIFICIOS
+// ═══════════════════════════════════════════════════════════════
+#define BUILDING_H_MIN     120000  // Altura mínima de edificios (~10 pisos)
+#define BUILDING_H_MAX     350000  // Altura máxima de edificios (~30 pisos)
+#define BUILDING_W         400000  // Ancho base de edificio
+#define BUILDING_OFFSET    1.5f    // Distancia desde el borde de la carretera
+#define BUILDING_SEG_MIN   6       // Segmentos mínimos por bloque
+#define BUILDING_SEG_MAX   16      // Segmentos máximos por bloque
+#define BUILDING_GAP_MIN   10      // Segmentos mínimos de hueco entre bloques
+#define BUILDING_GAP_MAX   20      // Segmentos máximos de hueco entre bloques
+
+// ═══════════════════════════════════════════════════════════════
+//  TRÁFICO
 // ═══════════════════════════════════════════════════════════════
 #define MAX_CARS 6
 

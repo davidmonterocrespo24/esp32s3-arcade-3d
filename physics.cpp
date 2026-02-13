@@ -19,7 +19,7 @@ float position   = 0;
 float playerX    = 0;
 float speed      = 0;
 float maxSpeed;
-float centrifugal = 0.18f;
+float centrifugal = CENTRIFUGAL;
 
 bool  crashed     = false;
 unsigned long crashTimer = 0;
@@ -45,7 +45,7 @@ void initPhysics() {
   float fovRad = FOV_DEG * PI / 180.0;
   cameraDepth  = 1.0 / tanf(fovRad / 2.0);
   playerZdist  = CAM_HEIGHT * cameraDepth;
-  maxSpeed     = SEG_LEN * 65.0;  // ~246 km/h (68 m/s) a escala real
+  maxSpeed     = SEG_LEN * SPEED_MULTIPLIER;
 
   position     = 0;
   playerX      = 0;
@@ -66,16 +66,14 @@ void handleInput(float dt) {
   // === MODO DEMO: Auto-piloto con aceleración progresiva ===
 
   // Aceleración progresiva (no instantánea)
-  float targetAccel = maxSpeed * 0.9f;  // Aceleración objetivo (0→max en ~2.2s)
-  float accelSpeed = 180.0f;            // Subida gradual del motor
+  float targetAccel = maxSpeed * ACCEL_TARGET;
+  float accelSpeed  = ACCEL_RAMP;
 
-  if (speed < maxSpeed * 0.90f) {
-    // Aplicar aceleración gradualmente
+  if (speed < maxSpeed * ACCEL_NEAR_MAX) {
     acceleration += accelSpeed * dt;
     if (acceleration > targetAccel) acceleration = targetAccel;
   } else {
-    // Cerca de velocidad máxima, reducir aceleración
-    acceleration *= 0.97f;
+    acceleration *= ACCEL_DAMPING;
   }
 
   // Leer la curva actual para anticipar el giro
@@ -84,7 +82,7 @@ void handleInput(float dt) {
 
   // Contragirar según la curva + volver al centro
   float target = -curCurve * 0.12;
-  float steer = (target - playerX) * 1.8 * dt;
+  float steer = (target - playerX) * STEER_AUTO * dt;
   playerX += steer;
 
   playerX = clampF(playerX, -0.8, 0.8);
@@ -102,12 +100,12 @@ void updatePhysics(float dt) {
   float slope = (currentY - prevY) / SEG_LEN;  // Pendiente del terreno
 
   // Subiendo = más lento, bajando = más rápido
-  float gravityEffect = -slope * 1600.0f;  // Factor de gravedad (proporcional a nueva velocidad)
+  float gravityEffect = -slope * GRAVITY_FACTOR;
   acceleration += gravityEffect * dt;
 
   // === ACELERACIÓN CON FRICCIÓN ===
   // Fricción del aire y del suelo
-  float friction = 0.996f;  // Frenado ~3.3s desde velocidad máxima
+  float friction = FRICTION;
   speed *= friction;
 
   // Aplicar aceleración a la velocidad
@@ -121,16 +119,16 @@ void updatePhysics(float dt) {
   float curveForce = segments[pSeg].curve * centrifugal * spPct;
 
   // Velocidad lateral aumenta con la fuerza de la curva
-  velocityX += curveForce * dt * 3.0f;
+  velocityX += curveForce * dt * CURVE_FORCE;
 
   // Fricción lateral (el auto intenta volver al centro)
-  velocityX *= 0.90f;
+  velocityX *= LATERAL_FRICTION;
 
   // Aplicar velocidad lateral a la posición
   playerX -= velocityX * dt;
 
   // También aplicar el empuje de la curva (centrífugo)
-  float steerDx = dt * 1.5 * spPct;
+  float steerDx = dt * CENTRIFUGAL_DX * spPct;
   playerX -= steerDx * spPct * segments[pSeg].curve * centrifugal;
 
   // === ÁNGULO DE DERRAPE VISUAL ===

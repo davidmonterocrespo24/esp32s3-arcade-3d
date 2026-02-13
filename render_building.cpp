@@ -13,12 +13,11 @@ void drawBuilding(RenderPt& p0, RenderPt& p1, int heightVal, uint16_t baseCol, i
   int h1 = (int)(p1.scale * heightVal);
   int h0 = (int)(p0.scale * heightVal);
   // Ancho del edificio MUCHO MÁS ANCHO (400000)
-  int bw1 = (int)(p1.scale * 400000);
-  int bw0 = (int)(p0.scale * 400000);
+  int bw1 = (int)(p1.scale * BUILDING_W);
+  int bw0 = (int)(p0.scale * BUILDING_W);
 
-  // Offset desde la carretera (1.5x validado por usuario)
-  int off1 = p1.w * 1.5;
-  int off0 = p0.w * 1.5;
+  int off1 = p1.w * BUILDING_OFFSET;
+  int off0 = p0.w * BUILDING_OFFSET;
 
   // Coordenadas base (izq o derecha)
   // Si es izquierda: restamos offset. Si es derecha: sumamos.

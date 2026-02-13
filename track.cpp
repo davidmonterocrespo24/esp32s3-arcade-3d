@@ -169,12 +169,12 @@ void buildTrack() {
     // --- LADO IZQUIERDO (Edificios estilo ciudad) ---
     if (buildCounterL <= 0) {
       if (random(0, 10) < 6) {
-        curBuildL = random(400000, 1000000);
+        curBuildL = random(BUILDING_H_MIN, BUILDING_H_MAX);
         curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
-        buildCounterL = random(6, 16); // bloque corto = variedad
+        buildCounterL = random(BUILDING_SEG_MIN, BUILDING_SEG_MAX);
       } else {
         curBuildL = 0;
-        buildCounterL = random(10, 20); // hueco amplio entre bloques
+        buildCounterL = random(BUILDING_GAP_MIN, BUILDING_GAP_MAX);
       }
     }
     segments[i].buildL = curBuildL;
@@ -184,12 +184,12 @@ void buildTrack() {
     // --- LADO DERECHO (Lógica independiente) ---
     if (buildCounterR <= 0) {
       if (random(0, 10) < 6) {
-        curBuildR = random(400000, 1000000);
+        curBuildR = random(BUILDING_H_MIN, BUILDING_H_MAX);
         curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
-        buildCounterR = random(6, 16);
+        buildCounterR = random(BUILDING_SEG_MIN, BUILDING_SEG_MAX);
       } else {
         curBuildR = 0;
-        buildCounterR = random(10, 20);
+        buildCounterR = random(BUILDING_GAP_MIN, BUILDING_GAP_MAX);
       }
     }
     segments[i].buildR = curBuildR;
