@@ -11,7 +11,9 @@
       "Bash(cat:*)",
       "Bash(where:*)",
       "Bash(python:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(touch:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }
