@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE GESTIÓN DE COLORES
+  COLOR MANAGEMENT IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -8,7 +8,7 @@
 #include <TFT_eSPI.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  PALETA DE COLORES (Definición de Variables)
+//  COLOR PALETTE (Variable Definitions)
 // ═══════════════════════════════════════════════════════════════
 uint16_t colSky1, colSky2, colSky3;
 uint16_t colGrassL, colGrassD;
@@ -17,7 +17,7 @@ uint16_t colRumbleL, colRumbleD;
 uint16_t colLane, colFog;
 
 // ═══════════════════════════════════════════════════════════════
-//  IMPLEMENTACIÓN DE FUNCIONES
+//  FUNCTION IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════
 
 uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {

@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE GENERACIÓN DE PISTA
+  TRACK GENERATION IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -10,7 +10,7 @@
 #include <Arduino.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES GLOBALES DE PISTA (Definición)
+//  GLOBAL TRACK VARIABLES (Definition)
 // ═══════════════════════════════════════════════════════════════
 Segment segments[TOTAL_SEGS];
 int segCount = 0;
@@ -19,7 +19,7 @@ float trackLength;
 TrafficCar trafficCars[MAX_CARS];
 
 // ═══════════════════════════════════════════════════════════════
-//  IMPLEMENTACIÓN
+//  IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════
 
 float lastY() {
@@ -64,39 +64,101 @@ void addSprite(int idx, int type, float off) {
 void buildTrack() {
   segCount = 0;
 
-  // Circuito variado que alterna curvas izq/der y sube/baja constantemente
-  // TOTAL aprox: 15 secciones × ~13 segs = ~195 segmentos
-  addRoad(5, 10, 5, 0, 0);           // 1. Recta de salida
-  addRoad(8, 12, 8, -6.0, 10);       // 2. IZQUIERDA + subida
-  addRoad(5, 8, 5, 0, -15);          // 3. Recta + bajada
-  addRoad(8, 12, 8, 7.0, 0);         // 4. DERECHA fuerte
-  addRoad(5, 8, 5, 0, 20);           // 5. Recta + colina
-  addRoad(8, 12, 8, -5.5, -10);      // 6. IZQUIERDA + bajada
-  addRoad(5, 8, 5, 0, 0);            // 7. Recta plana
-  addRoad(8, 12, 8, 6.5, 15);        // 8. DERECHA + subida
-  addRoad(5, 8, 5, 0, -20);          // 9. Recta + bajada
-  addRoad(8, 12, 8, -7.5, 0);        // 10. IZQUIERDA extrema
-  addRoad(5, 8, 5, 0, 10);           // 11. Recta + subida
-  addRoad(8, 12, 8, 5.0, -15);       // 12. DERECHA + bajada
-  addRoad(5, 8, 5, 0, 0);            // 13. Recta
-  addRoad(8, 12, 8, -6.5, 20);       // 14. IZQUIERDA + colina
-  addRoad(5, 10, 5, 0, -10);         // 15. Recta final + bajada
+#if RANDOM_TRACK
+  // Random track: combines straights, curves, and hills/dips
+  int pendingReturnDir = 0;
+  float pendingReturnMag = 0.0f;
+  // Reserve segments at the end for the closing leveling section
+  const int CLOSE_SEGS = 20;
+  while (segCount < TOTAL_SEGS - CLOSE_SEGS) {
+    int enter = random(4, 8);
+    int hold  = random(6, 14);
+    int leave = random(4, 8);
+    int needed = enter + hold + leave;
 
-  // Rellenar hasta TOTAL_SEGS
+    // If not enough space for this full section, stop here
+    if (segCount + needed > TOTAL_SEGS - CLOSE_SEGS) break;
+
+    float curve = (float)random(-80, 81) / 10.0f; // -8.0 to 8.0
+    if (curve > -2.0f && curve < 2.0f) curve = 0.0f;
+
+    float hill = 0.0f;
+    if (pendingReturnDir != 0) {
+      hill = (float)pendingReturnDir * pendingReturnMag;
+      pendingReturnDir = 0;
+    } else {
+      // Limit hillY so the track doesn't accumulate extreme heights
+      float currentY = lastY();
+      float maxAllowedHill = 8.0f; // Maximum delta per section
+      if (fabsf(currentY) > SEG_LEN * 4) {
+        // If already very high/low, force return
+        hill = (currentY > 0) ? -maxAllowedHill : maxAllowedHill;
+      } else {
+        hill = (float)random(-12, 13); // reduced range: -12 to 12
+        if (hill > -6.0f && hill < 6.0f) hill = 0.0f;
+        if (hill != 0.0f) {
+          pendingReturnDir = (hill > 0.0f) ? -1 : 1;
+          pendingReturnMag = max(6.0f, fabsf(hill) * 0.6f);
+        }
+      }
+    }
+
+    addRoad(enter, hold, leave, curve, hill);
+  }
+
+  // Closing section: level Y back to 0 so the loop is coherent
+  {
+    float currentY = lastY();
+    if (fabsf(currentY) > SEG_LEN * 0.5f) {
+      // Calculate hillY needed to return to 0
+      int closeSegsLeft = TOTAL_SEGS - CLOSE_SEGS - segCount;
+      int enter = max(4, closeSegsLeft / 3);
+      int hold  = 2;
+      int leave = max(4, closeSegsLeft / 3);
+      // hillY such that sY + hillY*SEG_LEN = 0 -> hillY = -sY/SEG_LEN
+      float hillY = -currentY / (float)SEG_LEN;
+      // Limit magnitude
+      hillY = max(-14.0f, min(14.0f, hillY));
+      addRoad(enter, hold, leave, 0.0f, hillY);
+    }
+  }
+#else
+  // Varied circuit alternating left/right curves and constant hills/dips
+  // TOTAL approx: 15 sections x ~13 segs = ~195 segments
+  addRoad(5, 10, 5, 0, 0);           // 1. Start straight
+  addRoad(8, 12, 8, -6.0, 10);       // 2. LEFT + uphill
+  addRoad(5, 8, 5, 0, -15);          // 3. Straight + downhill
+  addRoad(8, 12, 8, 7.0, 0);         // 4. Hard RIGHT
+  addRoad(5, 8, 5, 0, 20);           // 5. Straight + hill
+  addRoad(8, 12, 8, -5.5, -10);      // 6. LEFT + downhill
+  addRoad(5, 8, 5, 0, 0);            // 7. Flat straight
+  addRoad(8, 12, 8, 6.5, 15);        // 8. RIGHT + uphill
+  addRoad(5, 8, 5, 0, -20);          // 9. Straight + downhill
+  addRoad(8, 12, 8, -7.5, 0);        // 10. Extreme LEFT
+  addRoad(5, 8, 5, 0, 10);           // 11. Straight + uphill
+  addRoad(8, 12, 8, 5.0, -15);       // 12. RIGHT + downhill
+  addRoad(5, 8, 5, 0, 0);            // 13. Straight
+  addRoad(8, 12, 8, -6.5, 20);       // 14. LEFT + hill
+  addRoad(5, 10, 5, 0, -10);         // 15. Final straight + downhill
+#endif
+
+  // Fill up to TOTAL_SEGS
   while (segCount < TOTAL_SEGS) addSeg(0, 0, false);
   trackLength = (float)TOTAL_SEGS * SEG_LEN;
 
-  // 1. TÚNEL ÚNICO (Solo 1 túnel largo, no múltiples)
-  // Posicionado en el segundo tercio de la pista
-  // EXTENSION: 60 segmentos (mas largo)
-  for (int i = 50; i < 130; i++) { 
+  // 1. SINGLE TUNNEL (Only 1 long tunnel, not multiple)
+  // Positioned in the second third of the track
+  // EXTENSION: 60 segments (longer)
+  int tunnelStart = TOTAL_SEGS / 3;
+  int tunnelLen = min(60, TOTAL_SEGS - tunnelStart - 1);
+  for (int i = tunnelStart; i < tunnelStart + tunnelLen; i++) {
     segments[i].tunnel = true;
-    segments[i].buildL = 0; // Sin edificios dentro
+    segments[i].buildL = 0; // No buildings inside
     segments[i].buildR = 0;
   }
 
-  // 2. CONSTRUIR LA CIUDAD (Edificios variados estilo Nueva York/Horizon Chase)
-  int buildCounterL = 0; // Contadores para duración del edificio actual
+  // 2. BUILD THE CITY (Varied buildings in New York/Horizon Chase style)
+  int buildCounterL = 0; // Counters for current building duration
   int buildCounterR = 0;
   int curBuildL = 0, curBuildR = 0;
   uint16_t curColL = 0, curColR = 0;
@@ -104,36 +166,30 @@ void buildTrack() {
   for (int i = 0; i < TOTAL_SEGS; i++) {
     if (segments[i].tunnel) continue;
 
-    // --- LADO IZQUIERDO (Edificios estilo ciudad) ---
+    // --- LEFT SIDE (City-style buildings) ---
     if (buildCounterL <= 0) {
-      // 50% probabilidad de edificio, 50% hueco (Menos juntos: "no tan juntos")
-      if (random(0, 10) < 5) {
-        // Altura EXTREMA (Rascacielos)
-        curBuildL = random(400000, 1000000); 
-        
-        // Colores más variados y urbanos
+      if (random(0, 10) < 6) {
+        curBuildL = random(BUILDING_H_MIN, BUILDING_H_MAX);
         curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
-        
-        // MUCHO MÁS ANCHOS (Segmentos)
-        buildCounterL = random(20, 45);
+        buildCounterL = random(BUILDING_SEG_MIN, BUILDING_SEG_MAX);
       } else {
-        curBuildL = 0; // Hueco entre edificios
-        buildCounterL = random(3, 8); // Huecos más largos también
+        curBuildL = 0;
+        buildCounterL = random(BUILDING_GAP_MIN, BUILDING_GAP_MAX);
       }
     }
     segments[i].buildL = curBuildL;
     segments[i].colorL = curColL;
     buildCounterL--;
 
-    // --- LADO DERECHO (Lógica independiente) ---
+    // --- RIGHT SIDE (Independent logic) ---
     if (buildCounterR <= 0) {
-      if (random(0, 10) < 6) { 
-        curBuildR = random(400000, 1000000); 
+      if (random(0, 10) < 6) {
+        curBuildR = random(BUILDING_H_MIN, BUILDING_H_MAX);
         curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
-        buildCounterR = random(20, 45); // Más segmentos
+        buildCounterR = random(BUILDING_SEG_MIN, BUILDING_SEG_MAX);
       } else {
         curBuildR = 0;
-        buildCounterR = random(3, 8);
+        buildCounterR = random(BUILDING_GAP_MIN, BUILDING_GAP_MAX);
       }
     }
     segments[i].buildR = curBuildR;
@@ -141,7 +197,7 @@ void buildTrack() {
     buildCounterR--;
   }
 
-  // 3. Árboles en huecos entre edificios
+  // 3. Trees in gaps between buildings
   for (int n = 5; n < segCount; n++) {
     if (segments[n].tunnel || segments[n].buildL > 0 || segments[n].buildR > 0) continue;
     int r = random(0, 100);
@@ -150,20 +206,20 @@ void buildTrack() {
   }
 }
 
-// Colores de tráfico en Flash (PROGMEM) - ahorra RAM
+// Traffic colors in Flash (PROGMEM) - saves RAM
 const uint16_t PROGMEM trafficColors[] = {
-  0x051C,  // rgb(0,80,220)   - Azul
-  0xDDE0,  // rgb(220,200,0)  - Amarillo
-  0xC618,  // rgb(200,200,200)- Gris
-  0x05A0,  // rgb(0,180,80)   - Verde
-  0xFC60,  // rgb(255,100,0)  - Naranja
-  0xA01C,  // rgb(160,0,200)  - Morado
+  0x051C,  // rgb(0,80,220)   - Blue
+  0xDDE0,  // rgb(220,200,0)  - Yellow
+  0xC618,  // rgb(200,200,200)- Grey
+  0x05A0,  // rgb(0,180,80)   - Green
+  0xFC60,  // rgb(255,100,0)  - Orange
+  0xA01C,  // rgb(160,0,200)  - Purple
   0x05BC,  // rgb(0,180,180)  - Cyan
-  0xB1E8,  // rgb(180,60,60)  - Rojo oscuro
-  0xFDB2,  // rgb(255,180,200)- Rosa
-  0x6318,  // rgb(100,100,100)- Gris oscuro
-  0x0780,  // rgb(0,120,0)    - Verde oscuro
-  0xC5E0   // rgb(200,150,0)  - Dorado
+  0xB1E8,  // rgb(180,60,60)  - Dark red
+  0xFDB2,  // rgb(255,180,200)- Pink
+  0x6318,  // rgb(100,100,100)- Dark grey
+  0x0780,  // rgb(0,120,0)    - Dark green
+  0xC5E0   // rgb(200,150,0)  - Gold
 };
 
 void initTraffic(float maxSpeed) {

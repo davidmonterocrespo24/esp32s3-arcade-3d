@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE RENDERIZADO DEL HUD Y VELOCÍMETRO
+  HUD AND SPEEDOMETER RENDERING IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -11,22 +11,22 @@
 #include "physics.h"
 
 void drawSpeedometer(float speed, float maxSpeed) {
-  // Posición inferior derecha
+  // Bottom-right position
   int centerX = SCR_W - 55;
   int centerY = SCR_H - 55;
   int radius = 42;
 
-  // Fondo semi-transparente
+  // Semi-transparent background
   spr.fillCircle(centerX, centerY, radius + 3, rgb(20, 20, 20));
   spr.drawCircle(centerX, centerY, radius + 3, TFT_DARKGREY);
   spr.drawCircle(centerX, centerY, radius + 2, rgb(60, 60, 60));
 
-  // Calcular velocidad en km/h (0-300)
+  // Calculate speed in km/h (0-300)
   int kmh = (int)(speed * 300.0 / maxSpeed);
 
-  // Dibujar marcas del velocímetro (0, 100, 200, 300)
+  // Draw speedometer marks (0, 100, 200, 300)
   for(int i = 0; i <= 6; i++) {
-    float angle = (-225 + i * 75) * PI / 180.0;  // De -225° a 225° (270° total)
+    float angle = (-225 + i * 75) * PI / 180.0;  // From -225° to 225° (270° total)
     int x1 = centerX + cos(angle) * (radius - 8);
     int y1 = centerY + sin(angle) * (radius - 8);
     int x2 = centerX + cos(angle) * (radius - 2);
@@ -35,7 +35,7 @@ void drawSpeedometer(float speed, float maxSpeed) {
     uint16_t markColor = (i >= 5) ? TFT_RED : TFT_ORANGE;
     spr.drawLine(x1, y1, x2, y2, markColor);
 
-    // Números cada 100 km/h
+    // Numbers every 100 km/h
     if (i % 2 == 0) {
       int num = i * 50;
       int tx = centerX + cos(angle) * (radius - 18);
@@ -47,27 +47,27 @@ void drawSpeedometer(float speed, float maxSpeed) {
     }
   }
 
-  // Aguja del velocímetro
-  float needleAngle = -225 + (kmh / 300.0) * 270.0;  // Mapear 0-300 a -225/+45 grados
+  // Speedometer needle
+  float needleAngle = -225 + (kmh / 300.0) * 270.0;  // Map 0-300 to -225/+45 degrees
   needleAngle = needleAngle * PI / 180.0;
 
   int needleX = centerX + cos(needleAngle) * (radius - 10);
   int needleY = centerY + sin(needleAngle) * (radius - 10);
 
-  // Sombra de la aguja
+  // Needle shadow
   spr.drawLine(centerX + 1, centerY + 1, needleX + 1, needleY + 1, rgb(10, 10, 10));
 
-  // Aguja principal (más gruesa)
+  // Main needle (thicker)
   uint16_t needleColor = (kmh > 250) ? TFT_RED : (kmh > 200) ? TFT_YELLOW : TFT_WHITE;
   spr.drawLine(centerX, centerY, needleX, needleY, needleColor);
   spr.drawLine(centerX - 1, centerY, needleX - 1, needleY, needleColor);
   spr.drawLine(centerX, centerY - 1, needleX, needleY - 1, needleColor);
 
-  // Centro de la aguja
+  // Needle center
   spr.fillCircle(centerX, centerY, 4, needleColor);
   spr.drawCircle(centerX, centerY, 5, TFT_DARKGREY);
 
-  // Texto de velocidad digital en el centro
+  // Digital speed text in the center
   spr.setTextSize(2);
   spr.setTextColor(needleColor, rgb(20, 20, 20));
   spr.setCursor(centerX - 18, centerY + 12);
@@ -79,7 +79,7 @@ void drawSpeedometer(float speed, float maxSpeed) {
 void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime) {
   int kmh = (int)(speed * 300.0 / maxSpeed);
 
-  // === CONTADOR DE VUELTAS (Estilo Top Gear) ===
+  // === LAP COUNTER (Top Gear style) ===
   spr.fillRect(0, 0, 90, 36, TFT_BLACK);
   spr.drawRect(0, 0, 90, 36, TFT_RED);
   spr.drawRect(1, 1, 88, 34, TFT_DARKGREY);
@@ -94,7 +94,7 @@ void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTim
   spr.print("/");
   spr.print(totalLaps);
 
-  // Tiempo actual
+  // Current time
   spr.setTextSize(1);
   spr.setTextColor(TFT_YELLOW, TFT_BLACK);
   spr.setCursor(5, 22);
@@ -123,6 +123,6 @@ void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTim
     spr.print(" ");
   }
 
-  // Llamar al velocímetro circular
+  // Call circular speedometer
   drawSpeedometer(speed, maxSpeed);
 }

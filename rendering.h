@@ -1,7 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  RENDERIZADO Y DIBUJO - MÓDULO PRINCIPAL
-  Coordinador de submódulos de renderizado
+  RENDERING AND DRAWING - MAIN MODULE
+  Coordinator of rendering submodules
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -12,19 +12,19 @@
 #include "config.h"
 #include "structs.h"
 
-// Incluir submódulos de renderizado
+// Include rendering submodules
 #include "render_player.h"
 #include "render_traffic.h"
 #include "render_road.h"
 #include "render_hud.h"
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES GLOBALES DE RENDERIZADO
+//  GLOBAL RENDERING VARIABLES
 // ═══════════════════════════════════════════════════════════════
 extern TFT_eSPI tft;
 extern TFT_eSprite spr;
 
-// -- PARALLAX BACKGROUND (Estilo Horizon Chase) --
+// -- PARALLAX BACKGROUND (Horizon Chase style) --
 extern TFT_eSprite bgSpr;
 extern float skyOffset;
 extern bool bgCreated;
@@ -33,13 +33,13 @@ extern RenderPt rCache[DRAW_DIST];
 extern int16_t  rClip[DRAW_DIST];
 
 // ═══════════════════════════════════════════════════════════════
-//  FUNCIONES AUXILIARES
+//  HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
-// Inicializar fondo parallax con skyline procedural
+// Initialize parallax background with procedural skyline
 void initBackground();
 
-// Dibujar un trapecio 3D (quad) - función auxiliar
+// Draw a 3D trapezoid (quad) - helper function
 void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c);
 
 #endif // RENDERING_H

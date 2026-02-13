@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  RENDERIZADO DEL AUTO DEL JUGADOR
+  PLAYER CAR RENDERING
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -9,13 +9,13 @@
 
 #include <Arduino.h>
 
-// Dibuja el auto del jugador en 3D
+// Draws the player car in 3D
 void drawPlayerCar();
 
-// Dibuja la pantalla de inicio con el auto rotando
+// Draws the start screen with the rotating car
 void drawStartScreen(float time);
 
-// Dibuja el mensaje de crash
+// Draws the crash message
 void drawCrashMessage();
 
 #endif // RENDER_PLAYER_H

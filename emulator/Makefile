@@ -18,6 +18,7 @@ SRCS = main.cpp \
        ../render_player.cpp \
        ../render_traffic.cpp \
        ../render_road.cpp \
+       ../render_building.cpp \
        ../render_hud.cpp \
        ../physics.cpp
 

@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE FÍSICA Y LÓGICA
+  PHYSICS AND LOGIC IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -11,7 +11,7 @@
 #include <Arduino.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES GLOBALES (Definición)
+//  GLOBAL VARIABLES (Definition)
 // ═══════════════════════════════════════════════════════════════
 float cameraDepth;
 float playerZdist;
@@ -19,7 +19,7 @@ float position   = 0;
 float playerX    = 0;
 float speed      = 0;
 float maxSpeed;
-float centrifugal = 0.3f;
+float centrifugal = CENTRIFUGAL;
 
 bool  crashed     = false;
 unsigned long crashTimer = 0;
@@ -32,20 +32,20 @@ float prevPosition   = 0;
 int currentLap       = 1;
 int totalLaps        = 3;
 
-// Variables de física avanzada
-float velocityX      = 0;     // Velocidad lateral (para derrape)
-float acceleration   = 0;     // Aceleración actual
-float driftAngle     = 0;     // Ángulo de derrape
+// Advanced physics variables
+float velocityX      = 0;     // Lateral velocity (for drift)
+float acceleration   = 0;     // Current acceleration
+float driftAngle     = 0;     // Drift angle
 
 // ═══════════════════════════════════════════════════════════════
-//  IMPLEMENTACIÓN
+//  IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════
 
 void initPhysics() {
   float fovRad = FOV_DEG * PI / 180.0;
   cameraDepth  = 1.0 / tanf(fovRad / 2.0);
   playerZdist  = CAM_HEIGHT * cameraDepth;
-  maxSpeed     = SEG_LEN * 30.0;
+  maxSpeed     = SEG_LEN * SPEED_MULTIPLIER;
 
   position     = 0;
   playerX      = 0;
@@ -56,35 +56,33 @@ void initPhysics() {
   bestLapTime    = 0;
   prevPosition   = 0;
 
-  // Inicializar física avanzada
+  // Initialize advanced physics
   velocityX    = 0;
   acceleration = 0;
   driftAngle   = 0;
 }
 
 void handleInput(float dt) {
-  // === MODO DEMO: Auto-piloto con aceleración progresiva ===
+  // === DEMO MODE: Auto-pilot with progressive acceleration ===
 
-  // Aceleración progresiva (no instantánea)
-  float targetAccel = maxSpeed * 2.0f;  // Aceleración objetivo
-  float accelSpeed = 500.0f;            // Qué tan rápido acelera
+  // Progressive acceleration (not instantaneous)
+  float targetAccel = maxSpeed * ACCEL_TARGET;
+  float accelSpeed  = ACCEL_RAMP;
 
-  if (speed < maxSpeed * 0.85f) {
-    // Aplicar aceleración gradualmente
+  if (speed < maxSpeed * ACCEL_NEAR_MAX) {
     acceleration += accelSpeed * dt;
     if (acceleration > targetAccel) acceleration = targetAccel;
   } else {
-    // Cerca de velocidad máxima, reducir aceleración
-    acceleration *= 0.95f;
+    acceleration *= ACCEL_DAMPING;
   }
 
-  // Leer la curva actual para anticipar el giro
+  // Read current curve to anticipate the turn
   int pSeg = findSegIdx(position + playerZdist);
   float curCurve = segments[pSeg].curve;
 
-  // Contragirar según la curva + volver al centro
+  // Counter-steer according to curve + return to center
   float target = -curCurve * 0.12;
-  float steer = (target - playerX) * 3.0 * dt;
+  float steer = (target - playerX) * STEER_AUTO * dt;
   playerX += steer;
 
   playerX = clampF(playerX, -0.8, 0.8);
@@ -96,67 +94,67 @@ void updatePhysics(float dt) {
 
   float spPct = speed / maxSpeed;
 
-  // === GRAVEDAD: Efecto de pendientes (subidas/bajadas) ===
+  // === GRAVITY: Slope effect (hills/dips) ===
   float currentY = segments[pSeg].y;
   float prevY = segments[prevSegIdx].y;
-  float slope = (currentY - prevY) / SEG_LEN;  // Pendiente del terreno
+  float slope = (currentY - prevY) / SEG_LEN;  // Terrain slope
 
-  // Subiendo = más lento, bajando = más rápido
-  float gravityEffect = -slope * 800.0f;  // Factor de gravedad
+  // Going up = slower, going down = faster
+  float gravityEffect = -slope * GRAVITY_FACTOR;
   acceleration += gravityEffect * dt;
 
-  // === ACELERACIÓN CON FRICCIÓN ===
-  // Fricción del aire y del suelo
-  float friction = 0.98f;  // Fricción constante
+  // === ACCELERATION WITH FRICTION ===
+  // Air and ground friction
+  float friction = FRICTION;
   speed *= friction;
 
-  // Aplicar aceleración a la velocidad
+  // Apply acceleration to speed
   speed += acceleration * dt;
 
-  // Limitar velocidad
+  // Limit speed
   if (speed > maxSpeed) speed = maxSpeed;
   if (speed < 0) speed = 0;
 
-  // === DERRAPE: Física lateral en curvas ===
+  // === DRIFT: Lateral physics in curves ===
   float curveForce = segments[pSeg].curve * centrifugal * spPct;
 
-  // Velocidad lateral aumenta con la fuerza de la curva
-  velocityX += curveForce * dt * 5.0f;
+  // Lateral velocity increases with curve force
+  velocityX += curveForce * dt * CURVE_FORCE;
 
-  // Fricción lateral (el auto intenta volver al centro)
-  velocityX *= 0.85f;
+  // Lateral friction (car tries to return to center)
+  velocityX *= LATERAL_FRICTION;
 
-  // Aplicar velocidad lateral a la posición
+  // Apply lateral velocity to position
   playerX -= velocityX * dt;
 
-  // También aplicar el empuje de la curva (centrífugo)
-  float steerDx = dt * 2.0 * spPct;
+  // Also apply curve push (centrifugal)
+  float steerDx = dt * CENTRIFUGAL_DX * spPct;
   playerX -= steerDx * spPct * segments[pSeg].curve * centrifugal;
 
-  // === ÁNGULO DE DERRAPE VISUAL ===
-  // Calcular ángulo basado en velocidad lateral y velocidad forward
+  // === VISUAL DRIFT ANGLE ===
+  // Calculate angle based on lateral velocity and forward speed
   if (speed > 0.1f) {
     driftAngle = atan2f(velocityX * 10.0f, speed / maxSpeed) * 0.5f;
     driftAngle = clampF(driftAngle, -0.5f, 0.5f);
   } else {
-    driftAngle *= 0.9f;  // Reducir ángulo gradualmente
+    driftAngle *= 0.9f;  // Gradually reduce angle
   }
 
   prevPosition = position;
   position = loopIncrease(position, dt * speed, trackLength);
 
-  // Detectar completar vuelta
+  // Detect lap completion
   if (position < prevPosition && prevPosition > trackLength * 0.9) {
     if (currentLapTime > 5.0) {
       lastLapTime = currentLapTime;
       if (bestLapTime <= 0 || currentLapTime < bestLapTime)
         bestLapTime = currentLapTime;
 
-      // Avanzar a la siguiente vuelta
+      // Advance to next lap
       if (currentLap < totalLaps) {
         currentLap++;
       } else {
-        // ¡Carrera terminada! Reiniciar
+        // Race finished! Reset
         currentLap = 1;
       }
     }
@@ -164,7 +162,7 @@ void updatePhysics(float dt) {
   }
   currentLapTime += dt;
 
-  // Actualizar tráfico
+  // Update traffic
   for (int i = 0; i < MAX_CARS; i++) {
     trafficCars[i].z = loopIncrease(trafficCars[i].z, dt * trafficCars[i].speed, trackLength);
     if (random(0, 200) < 2) {
@@ -177,8 +175,9 @@ void updatePhysics(float dt) {
 void checkCollisions() {
   const float playerW = 0.15;
   int pSeg = findSegIdx(position + playerZdist);
+  Segment& s = segments[pSeg];
 
-  // Colisiones con tráfico
+  // Collisions with traffic
   for (int i = 0; i < MAX_CARS; i++) {
     int cs = findSegIdx(trafficCars[i].z);
     int d  = abs(cs - pSeg);
@@ -193,9 +192,22 @@ void checkCollisions() {
     }
   }
 
-  // Colisiones con sprites
+  // Collisions with tunnel walls
+  if (s.tunnel) {
+    const float wallX = 0.95f;
+    if (playerX < -wallX || playerX > wallX) {
+      playerX = clampF(playerX, -wallX, wallX);
+      velocityX = 0.0f;
+      speed *= 0.3f;
+      if (speed > maxSpeed * 0.35f) {
+        crashed = true;
+        crashTimer = millis();
+      }
+    }
+  }
+
+  // Collisions with sprites
   if (playerX < -1.0 || playerX > 1.0) {
-    Segment& s = segments[pSeg];
     if (s.spriteType >= 0 && overlapChk(playerX, playerW, s.spriteOffset, 0.4)) {
       speed *= 0.2;
       if (speed > maxSpeed * 0.25) {
@@ -205,7 +217,7 @@ void checkCollisions() {
     }
   }
 
-  // Salirse completamente de la carretera
+  // Going completely off the road
   if (playerX <= -2.4 || playerX >= 2.4) {
     speed *= 0.5;
     if (speed > maxSpeed * 0.4) {

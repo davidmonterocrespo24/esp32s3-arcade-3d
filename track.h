@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  GENERACIÓN Y GESTIÓN DE PISTA
+  TRACK GENERATION AND MANAGEMENT
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -11,37 +11,37 @@
 #include "config.h"
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES GLOBALES DE PISTA
+//  GLOBAL TRACK VARIABLES
 // ═══════════════════════════════════════════════════════════════
 extern Segment segments[TOTAL_SEGS];
 extern int segCount;
 extern float trackLength;
 
 // ═══════════════════════════════════════════════════════════════
-//  FUNCIONES DE PISTA
+//  TRACK FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
-// Obtener la altura del último segmento
+// Get the height of the last segment
 float lastY();
 
-// Agregar un segmento a la pista
+// Add a segment to the track
 void addSeg(float curve, float y, bool isTunnel = false);
 
-// Agregar una sección de carretera con curvas y elevación
+// Add a road section with curves and elevation
 void addRoad(int enter, int hold, int leave, float curve, float hillY);
 
-// Agregar un sprite a un segmento específico
+// Add a sprite to a specific segment
 void addSprite(int idx, int type, float off);
 
-// Construir la pista completa
+// Build the complete track
 void buildTrack();
 
 // ═══════════════════════════════════════════════════════════════
-//  GESTIÓN DE TRÁFICO
+//  TRAFFIC MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 extern TrafficCar trafficCars[MAX_CARS];
 
-// Inicializar coches de tráfico
+// Initialize traffic cars
 void initTraffic(float maxSpeed);
 
 #endif // TRACK_H

@@ -1,4 +1,6 @@
 .history/*
 emulator/car_game_emu.exe
 *.o
-emulator/TFT_eSPI.o
+.claude/settings.local.json
+emulator/nul
+.claude/settings.local.json

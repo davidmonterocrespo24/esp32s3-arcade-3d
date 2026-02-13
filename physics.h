@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  FÍSICA Y LÓGICA DEL JUEGO
+  GAME PHYSICS AND LOGIC
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -8,7 +8,7 @@
 #define PHYSICS_H
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES GLOBALES DE FÍSICA
+//  GLOBAL PHYSICS VARIABLES
 // ═══════════════════════════════════════════════════════════════
 extern float cameraDepth;
 extern float playerZdist;
@@ -27,25 +27,25 @@ extern float prevPosition;
 extern int currentLap;
 extern int totalLaps;
 
-// Variables de física avanzada
-extern float velocityX;        // Velocidad lateral (para derrape)
-extern float acceleration;     // Aceleración actual
-extern float driftAngle;       // Ángulo de derrape
+// Advanced physics variables
+extern float velocityX;        // Lateral velocity (for drift)
+extern float acceleration;     // Current acceleration
+extern float driftAngle;       // Drift angle
 
 // ═══════════════════════════════════════════════════════════════
-//  FUNCIONES DE FÍSICA
+//  PHYSICS FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
-// Inicializar variables de física
+// Initialize physics variables
 void initPhysics();
 
-// Manejar entrada del jugador (modo demo autopilot)
+// Handle player input (demo autopilot mode)
 void handleInput(float dt);
 
-// Actualizar física del juego
+// Update game physics
 void updatePhysics(float dt);
 
-// Verificar colisiones
+// Check collisions
 void checkCollisions();
 
 #endif // PHYSICS_H

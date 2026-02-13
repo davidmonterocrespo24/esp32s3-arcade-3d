@@ -4,7 +4,16 @@
       "Bash(move car_racing_3d.ino car_game.ino)",
       "Bash(powershell -Command \"\\(Get-Content ''e:\\\\Hardware\\\\car_game\\\\rendering.cpp''\\).Length\")",
       "Bash(make clean:*)",
-      "Bash(make)"
+      "Bash(make)",
+      "Bash(./car_game_emu.exe)",
+      "Bash(make:*)",
+      "Bash(echo:*)",
+      "Bash(cat:*)",
+      "Bash(where:*)",
+      "Bash(python:*)",
+      "Bash(taskkill:*)",
+      "Bash(touch:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

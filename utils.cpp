@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  IMPLEMENTACIÓN DE FUNCIONES UTILITARIAS
+  UTILITY FUNCTIONS IMPLEMENTATION
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -9,7 +9,7 @@
 #include <math.h>
 
 // ═══════════════════════════════════════════════════════════════
-//  IMPLEMENTACIÓN DE FUNCIONES
+//  FUNCTION IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════
 
 float clampF(float v, float lo, float hi) {
