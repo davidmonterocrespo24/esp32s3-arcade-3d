@@ -4,6 +4,16 @@ An OutRun-style pseudo-3D racing game for the ESP32-S3 microcontroller with an I
 
 ---
 
+## Screenshots
+
+![Game Screenshot 1](img/Captura%20de%20pantalla%202026-02-13%20112753.png)
+
+![Game Screenshot 2](img/Captura%20de%20pantalla%202026-02-13%20112759.png)
+
+![Game Screenshot 3](img/image.png)
+
+---
+
 ## Features
 
 - **Pseudo-3D road rendering** — segment-based back-to-front painter's algorithm, classic arcade style
