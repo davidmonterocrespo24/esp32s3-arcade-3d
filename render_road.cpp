@@ -240,16 +240,17 @@ void drawRoad(float position, float playerX, float playerZdist,
        int ceilL1 = roadL1;
        int ceilR1 = roadR1;
 
-       // 0. INTERIOR DEL TÚNEL (negro) — tapa el cielo/fondo que se ve por los huecos
-       // Rellena el rectángulo que abarca todo el ancho del túnel entre suelo y techo
+       // 0. FONDO DEL TÚNEL (negro) — solo en el último segmento tunnel antes de salida
        {
-         int intTop = min(cy0, cy1);
-         int intBot = max((int)p0.y, (int)p1.y);
-         int intL   = min(roadL0, roadL1);
-         int intR   = max(roadR0, roadR1);
-         intL = max(intL, 0); intR = min(intR, SCR_W);
-         if (intBot > intTop && intR > intL)
-           spr.fillRect(intL, intTop, intR - intL, intBot - intTop, TFT_BLACK);
+         int nextIdx = (sIdx + 1) % TOTAL_SEGS;
+         if (!segments[nextIdx].tunnel) {
+           int intTop = cy1;
+           int intBot = (int)p1.y;
+           int intL   = max(roadL1, 0);
+           int intR   = min(roadR1, SCR_W);
+           if (intBot > intTop && intR > intL)
+             spr.fillRect(intL, intTop, intR - intL, intBot - intTop, TFT_BLACK);
+         }
        }
 
        // 1. TECHO (espejo de la carretera)
