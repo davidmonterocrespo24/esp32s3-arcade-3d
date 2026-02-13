@@ -9,6 +9,7 @@
 #include "config.h"
 #include "colors.h"
 #include "physics.h"
+#include "track.h"
 
 void drawSpeedometer(float speed, float maxSpeed) {
   // Bottom-right position
@@ -74,6 +75,77 @@ void drawSpeedometer(float speed, float maxSpeed) {
   if (kmh < 100) spr.print(" ");
   if (kmh < 10) spr.print(" ");
   spr.print(kmh);
+}
+
+void drawCountdown() {
+  unsigned long elapsed = millis() - countdownStart;
+  // Countdown phases: 0-1000ms=3, 1000-2000ms=2, 2000-3000ms=1, 3000-3600ms=GO
+  int cx = SCR_CX;
+  int cy = SCR_CY - 20;
+
+  if (elapsed < 3600) {
+    // Background box
+    spr.fillRect(cx - 40, cy - 30, 80, 60, rgb(0, 0, 0));
+    spr.drawRect(cx - 40, cy - 30, 80, 60, TFT_WHITE);
+
+    spr.setTextSize(4);
+    if (elapsed < 1000) {
+      spr.setTextColor(TFT_RED, TFT_BLACK);
+      spr.setCursor(cx - 12, cy - 16);
+      spr.print("3");
+    } else if (elapsed < 2000) {
+      spr.setTextColor(TFT_YELLOW, TFT_BLACK);
+      spr.setCursor(cx - 12, cy - 16);
+      spr.print("2");
+    } else if (elapsed < 3000) {
+      spr.setTextColor(TFT_GREEN, TFT_BLACK);
+      spr.setCursor(cx - 12, cy - 16);
+      spr.print("1");
+    } else {
+      // GO!
+      spr.fillRect(cx - 52, cy - 20, 104, 40, TFT_GREEN);
+      spr.setTextColor(TFT_WHITE, TFT_GREEN);
+      spr.setTextSize(3);
+      spr.setCursor(cx - 24, cy - 10);
+      spr.print("GO!");
+    }
+  }
+}
+
+void drawRaceResults() {
+  // Determine player position by comparing laps and track position
+  int playerPos = 1;
+  for (int i = 0; i < NUM_COMPETITORS; i++) {
+    bool compAhead = (competitors[i].lap > currentLap) ||
+                     (competitors[i].lap == currentLap && competitors[i].z > position);
+    if (compAhead) playerPos++;
+  }
+
+  // Podium box
+  spr.fillRect(SCR_CX - 90, SCR_CY - 55, 180, 110, TFT_BLACK);
+  spr.drawRect(SCR_CX - 90, SCR_CY - 55, 180, 110, TFT_YELLOW);
+  spr.drawRect(SCR_CX - 89, SCR_CY - 54, 178, 108, rgb(80, 70, 0));
+
+  spr.setTextSize(2);
+  spr.setTextColor(TFT_YELLOW, TFT_BLACK);
+  spr.setCursor(SCR_CX - 70, SCR_CY - 45);
+  spr.print("RACE FINISH!");
+
+  spr.setTextSize(1);
+  spr.setTextColor(TFT_WHITE, TFT_BLACK);
+  spr.setCursor(SCR_CX - 80, SCR_CY - 22);
+  spr.print("YOUR POSITION: ");
+  spr.setTextSize(3);
+  uint16_t posCol = (playerPos == 1) ? TFT_YELLOW : (playerPos == 2) ? TFT_WHITE : TFT_ORANGE;
+  static const char* posStr[] = { "1ST", "2ND", "3RD", "4TH" };
+  spr.setTextColor(posCol, TFT_BLACK);
+  spr.setCursor(SCR_CX - 30, SCR_CY - 10);
+  spr.print(posStr[playerPos - 1]);
+
+  spr.setTextSize(1);
+  spr.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  spr.setCursor(SCR_CX - 55, SCR_CY + 30);
+  spr.print("Restarting in 3 sec...");
 }
 
 void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime) {

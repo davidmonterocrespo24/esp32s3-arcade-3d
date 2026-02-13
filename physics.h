@@ -8,6 +8,19 @@
 #define PHYSICS_H
 
 // ═══════════════════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════════════════
+enum GameState {
+  STATE_COUNTDOWN,   // 3-2-1 pre-race countdown
+  STATE_RACING,      // Race in progress
+  STATE_FINISHED     // Race over — show results
+};
+
+extern GameState gameState;
+extern unsigned long countdownStart;  // millis() when countdown began
+extern bool raceResultShown;
+
+// ═══════════════════════════════════════════════════════════════
 //  GLOBAL PHYSICS VARIABLES
 // ═══════════════════════════════════════════════════════════════
 extern float cameraDepth;
@@ -44,6 +57,9 @@ void handleInput(float dt);
 
 // Update game physics
 void updatePhysics(float dt);
+
+// Update AI competitors
+void updateCompetitors(float dt);
 
 // Check collisions
 void checkCollisions();

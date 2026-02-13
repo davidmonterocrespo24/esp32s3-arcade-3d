@@ -33,13 +33,29 @@ struct RenderPt {
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  TRAFFIC CAR
+//  TRAFFIC CAR (kept for compatibility, unused in race mode)
 // ═══════════════════════════════════════════════════════════════
 struct TrafficCar {
   float    offset;          // Lateral offset (-1 to 1)
   float    z;               // Position on track
   float    speed;           // Car speed
   uint16_t color;           // Car color
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  COMPETITOR CAR (AI race opponents)
+// ═══════════════════════════════════════════════════════════════
+struct CompetitorCar {
+  float    z;               // Track position
+  float    x;               // Lateral offset (-1 to 1)
+  float    speed;           // Current speed
+  float    velocityX;       // Lateral velocity (drift)
+  float    acceleration;    // Current acceleration
+  float    driftAngle;      // Visual lean angle
+  float    speedFactor;     // Max speed multiplier (0.92-1.08)
+  float    steerFactor;     // Steering aggressiveness factor
+  uint16_t color;           // Flat-shaded car color
+  int      lap;             // Current lap
 };
 
 #endif // STRUCTS_H

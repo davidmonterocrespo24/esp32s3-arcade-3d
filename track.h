@@ -37,11 +37,19 @@ void addSprite(int idx, int type, float off);
 void buildTrack();
 
 // ═══════════════════════════════════════════════════════════════
-//  TRAFFIC MANAGEMENT
+//  TRAFFIC MANAGEMENT (unused in race mode, MAX_CARS=0)
 // ═══════════════════════════════════════════════════════════════
+#if MAX_CARS > 0
 extern TrafficCar trafficCars[MAX_CARS];
-
-// Initialize traffic cars
 void initTraffic(float maxSpeed);
+#endif
+
+// ═══════════════════════════════════════════════════════════════
+//  COMPETITOR MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+extern CompetitorCar competitors[NUM_COMPETITORS];
+
+// Initialize race competitors at the starting grid
+void initCompetitors(float maxSpeed);
 
 #endif // TRACK_H

@@ -219,6 +219,70 @@ static void renderCar2Mesh(int centerX, int centerY,
 }
 
 // ---------------------------------------------------------------------------
+// Simple 16-vertex competitor car renderer (optimized for performance)
+// Based on traffic car model but with rotation support
+// ---------------------------------------------------------------------------
+static void renderCompetitorSimple(int cx, int cy, float scale, float angle, uint16_t col) {
+  // FIX: Negate angle for correct rotation direction
+  angle = -angle;
+
+  float cosA = cosf(angle);
+  float sinA = sinf(angle);
+
+  // Same 16-vertex car model as traffic cars
+  float verts[16][3] = {
+    // LOWER CHASSIS (0-7)
+    {-18, 3, -40}, { 18, 3, -40}, { 18, 0,  40}, {-18, 0,  40},
+    {-18, 11, -40}, { 18, 11, -40}, { 20, 10, 40}, {-20, 10, 40},
+    // CABIN AND WINDOWS (8-15)
+    {-15, 11, -13}, { 15, 11, -13}, { 17, 11, 21}, {-17, 11, 21},
+    {-12, 21,  -4}, { 12, 21,  -4}, { 12, 20, 13}, {-12, 20, 13}
+  };
+
+  float sx[16], sy[16];
+
+  // Project vertices with rotation
+  for (int i = 0; i < 16; i++) {
+    float rx = verts[i][0] * cosA - verts[i][2] * sinA;
+    float ry = verts[i][1];
+
+    sx[i] = cx + (rx * scale * SCR_CX);
+    sy[i] = cy - (ry * scale * SCR_CY);
+  }
+
+  // Backface culling + draw faces
+  auto drawFace = [&](int v0, int v1, int v2, int v3, uint16_t faceCol) {
+    float cross = (sx[v1] - sx[v0]) * (sy[v2] - sy[v0]) - (sy[v1] - sy[v0]) * (sx[v2] - sx[v0]);
+    if (cross > 0) {
+      float maxY = max(max(sy[v0], sy[v1]), max(sy[v2], sy[v3]));
+      float minY = min(min(sy[v0], sy[v1]), min(sy[v2], sy[v3]));
+      if (maxY < 0 || minY > SCR_H) return;
+      drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], faceCol);
+    }
+  };
+
+  // Color variations from base color
+  uint16_t hoodCol  = col;
+  uint16_t bodyCol  = darkenCol(col, 0.85);
+  uint16_t darkCol  = darkenCol(col, 0.65);
+  uint16_t glassCol = rgb(80, 180, 255);
+  uint16_t grillCol = rgb(30, 30, 30);
+
+  // Draw faces back-to-front
+  drawFace(6, 7, 3, 2, darkCol);      // Rear Bumper
+  drawFace(14, 15, 11, 10, grillCol); // Rear Window
+  drawFace(7, 6, 5, 4, hoodCol);      // Top Cover
+  drawFace(7, 4, 0, 3, bodyCol);      // Left Side
+  drawFace(5, 6, 2, 1, bodyCol);      // Right Side
+  drawFace(15, 14, 13, 12, hoodCol);  // Roof
+  drawFace(13, 14, 10, 9, bodyCol);   // Right Door
+  drawFace(15, 12, 8, 11, bodyCol);   // Left Door
+  drawFace(12, 13, 9, 8, glassCol);   // Windshield
+  drawFace(0, 1, 2, 3, darkCol);      // Chassis Base
+  drawFace(4, 5, 1, 0, grillCol);     // Front Grille
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 void drawPlayerCar() {
@@ -260,6 +324,31 @@ void drawPlayerCar() {
   }
 
   renderCar2Mesh(centerX, centerY, rotY, pitch, 6.5f, 130.0f);
+}
+
+void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, float driftAngle) {
+  // Use scale directly from road projection
+  // Scale is already correct: cameraDepth / (z + cameraDepth)
+
+  if (scale < 0.002f) return;  // Too far/small to draw
+
+  // Shadow
+  int shadowRx = max(2, (int)(scale * 1600.0f));
+  int shadowRy = max(1, shadowRx / 7);
+  int shadowY  = screenY - (int)(scale * 200.0f);
+  uint16_t shadowCol = rgb(10, 10, 10);
+  for (int dy = -shadowRy; dy <= shadowRy; dy++) {
+    float t  = (float)dy / shadowRy;
+    int   hw = (int)(shadowRx * sqrtf(1.0f - t * t));
+    int   sy = shadowY + dy;
+    if (sy < 0 || sy >= SCR_H) continue;
+    int x0 = max(0, screenX - hw);
+    int x1 = min(SCR_W - 1, screenX + hw);
+    if (x1 > x0) spr.drawFastHLine(x0, sy, x1 - x0, shadowCol);
+  }
+
+  // Car body with corrected rotation
+  renderCompetitorSimple(screenX, screenY, scale, driftAngle, color);
 }
 
 void drawStartScreen(float time) {

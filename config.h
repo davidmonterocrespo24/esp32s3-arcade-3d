@@ -69,8 +69,9 @@
 #define BUILDING_GAP_MAX   20      // Maximum gap segments between blocks
 
 // ═══════════════════════════════════════════════════════════════
-//  TRAFFIC
+//  RACE / COMPETITORS
 // ═══════════════════════════════════════════════════════════════
-#define MAX_CARS 6
+#define MAX_CARS        0   // No random traffic cars in race mode
+#define NUM_COMPETITORS 3   // Number of AI race competitors
 
 #endif // CONFIG_H

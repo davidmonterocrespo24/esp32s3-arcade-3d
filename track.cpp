@@ -16,7 +16,11 @@ Segment segments[TOTAL_SEGS];
 int segCount = 0;
 float trackLength;
 
+#if MAX_CARS > 0
 TrafficCar trafficCars[MAX_CARS];
+#endif
+
+CompetitorCar competitors[NUM_COMPETITORS];
 
 // ═══════════════════════════════════════════════════════════════
 //  IMPLEMENTATION
@@ -206,6 +210,7 @@ void buildTrack() {
   }
 }
 
+#if MAX_CARS > 0
 // Traffic colors in Flash (PROGMEM) - saves RAM
 const uint16_t PROGMEM trafficColors[] = {
   0x051C,  // rgb(0,80,220)   - Blue
@@ -228,5 +233,38 @@ void initTraffic(float maxSpeed) {
     trafficCars[i].z      = random(0, TOTAL_SEGS) * SEG_LEN;
     trafficCars[i].speed  = maxSpeed * (0.2 + random(0, 50) / 100.0);
     trafficCars[i].color  = pgm_read_word(&trafficColors[i % 12]);
+  }
+}
+#endif
+
+// Competitor colors: red, blue, yellow
+static const uint16_t competitorColors[NUM_COMPETITORS] = {
+  0xF800,  // Red
+  0x001F,  // Blue
+  0xFFE0   // Yellow
+};
+
+// Starting grid positions (staggered behind player at z=0)
+// Negative z wraps to trackLength - offset
+static const float gridZ[NUM_COMPETITORS]  = { -2.0f * SEG_LEN, -2.0f * SEG_LEN, -4.0f * SEG_LEN };
+static const float gridX[NUM_COMPETITORS]  = { -0.3f, 0.3f, 0.0f };
+// Slight variation per competitor so they don't all drive identically
+static const float speedFactors[NUM_COMPETITORS] = { 1.00f, 0.97f, 1.03f };
+static const float steerFactors[NUM_COMPETITORS] = { 1.0f,  1.1f,  0.9f  };
+
+void initCompetitors(float maxSpeed) {
+  for (int i = 0; i < NUM_COMPETITORS; i++) {
+    float z = gridZ[i];
+    if (z < 0) z += trackLength;  // Wrap to end of track (behind start)
+    competitors[i].z            = z;
+    competitors[i].x            = gridX[i];
+    competitors[i].speed        = 0.0f;
+    competitors[i].velocityX    = 0.0f;
+    competitors[i].acceleration = 0.0f;
+    competitors[i].driftAngle   = 0.0f;
+    competitors[i].speedFactor  = speedFactors[i];
+    competitors[i].steerFactor  = steerFactors[i];
+    competitors[i].color        = competitorColors[i];
+    competitors[i].lap          = 1;
   }
 }

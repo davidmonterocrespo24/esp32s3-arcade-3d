@@ -2,14 +2,14 @@
   ═══════════════════════════════════════════════════════════════
   ESP32 Pseudo-3D Racing Game — TFT_eSPI (Double Buffered)
 
-  ESTRUCTURA MODULAR:
-  - config.h       : Constantes y definiciones del hardware
-  - structs.h      : Estructuras de datos (Segment, RenderPt, TrafficCar)
-  - colors.cpp/h   : Gestión de colores y paletas
-  - utils.cpp/h    : Funciones utilitarias matemáticas
-  - track.cpp/h    : Generación de pista y tráfico
-  - rendering.cpp/h: Funciones de dibujo y renderizado
-  - physics.cpp/h  : Física del juego y colisiones
+  Modules:
+  - config.h       : Constants and hardware definitions
+  - structs.h      : Data structures (Segment, RenderPt, TrafficCar, CompetitorCar)
+  - colors.cpp/h   : Color management and palettes
+  - utils.cpp/h    : Math utility functions
+  - track.cpp/h    : Track generation and competitors
+  - rendering.cpp/h: Drawing and rendering functions
+  - physics.cpp/h  : Game physics, collisions, and AI
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -23,11 +23,13 @@
 #include "track.h"
 #include "rendering.h"
 #include "physics.h"
+#include "render_player.h"
+#include "render_hud.h"
 
 // ═══════════════════════════════════════════════════════════════
-//  VARIABLES DE CONTROL DE TIEMPO Y DÍA/NOCHE
+//  TIME OF DAY CONTROL
 // ═══════════════════════════════════════════════════════════════
-int  timeOfDay = 0;            // 0=día, 1=atardecer, 2=noche
+int  timeOfDay = 0;            // 0=day, 1=sunset, 2=night
 long distSinceTimeChange = 0;
 
 // ═══════════════════════════════════════════════════════════════
@@ -36,53 +38,57 @@ long distSinceTimeChange = 0;
 void setup() {
   Serial.begin(115200);
 
-  // Configurar pines de botones
+  // Configure button pins
   pinMode(BTN_LEFT,  INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
   randomSeed(analogRead(0));
 
-  // Configurar backlight de la pantalla
+  // Configure TFT backlight
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
 
-  // Inicializar pantalla TFT
+  // Initialize TFT display
   tft.begin();
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
 
-  // Crear sprite para double buffering en PSRAM (ahorra ~150KB RAM)
+  // Create main sprite for double buffering (uses PSRAM)
   spr.setColorDepth(16);
-  spr.setAttribute(PSRAM_ENABLE, true); // Habilitar PSRAM antes de crear
+  spr.setAttribute(PSRAM_ENABLE, true);
   if (spr.createSprite(SCR_W, SCR_H) == nullptr) {
-    Serial.println("ERROR: Fallo al crear spr principal!");
+    Serial.println("ERROR: Failed to create main sprite!");
   }
 
-  // Inicializar física
+  // Initialize physics (also sets gameState = STATE_COUNTDOWN)
   initPhysics();
 
-  // DEBUG DE PSRAM
+  // Debug PSRAM
   Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());
   Serial.print("Free PSRAM:  "); Serial.println(ESP.getFreePsram());
 
-  // Inicializar colores
+  // Initialize colors
   initColors(timeOfDay);
 
-  // ¡NUEVO! Generar montañas parallax en PSRAM
+  // Generate parallax mountains in PSRAM
   initBackground();
 
-  // Construir pista
+  // Build track
   buildTrack();
 
-  // Inicializar tráfico
-  initTraffic(maxSpeed);
+  // Initialize race competitors at starting grid
+  initCompetitors(maxSpeed);
 
-  // Mostrar pantalla de inicio con carro rotando (3 segundos)
+  // Show start screen with rotating car (3 seconds)
   unsigned long startTime = millis();
   while (millis() - startTime < 3000) {
-    float animTime = (millis() - startTime) * 0.001f; // Convertir a segundos
+    float animTime = (millis() - startTime) * 0.001f;
     drawStartScreen(animTime);
-    delay(16); // ~60 FPS
+    delay(16);
   }
+
+  // Begin countdown immediately after start screen
+  countdownStart = millis();
+  gameState = STATE_COUNTDOWN;
 
   lastFrameMs = millis();
   distSinceTimeChange = 0;
@@ -93,31 +99,79 @@ void setup() {
 // ═══════════════════════════════════════════════════════════════
 void loop() {
   unsigned long now = millis();
-  float dt = (now - lastFrameMs) / 1000.0;
+  float dt = (now - lastFrameMs) / 1000.0f;
   lastFrameMs = now;
-  if (dt > 0.1) dt = 0.1; // Limitar delta time
+  if (dt > 0.1f) dt = 0.1f;
 
-  // Actualizar juego si no está crashed
+  // ── STATE: COUNTDOWN ──────────────────────────────────────────
+  if (gameState == STATE_COUNTDOWN) {
+    unsigned long elapsed = millis() - countdownStart;
+    if (elapsed >= 3600) {
+      // GO! — transition to racing
+      gameState = STATE_RACING;
+    }
+    // During countdown: render the scene frozen at starting line
+    // (no physics update, cars stay still)
+    drawSky(position, playerZdist, timeOfDay, skyOffset);
+    drawRoad(position, playerX, playerZdist, cameraDepth, timeOfDay);
+    drawPlayerCar();
+    drawCountdown();
+    spr.pushSprite(0, 0);
+    return;
+  }
+
+  // ── STATE: FINISHED ───────────────────────────────────────────
+  if (gameState == STATE_FINISHED) {
+    if (!raceResultShown) {
+      raceResultShown = true;
+    }
+    drawSky(position, playerZdist, timeOfDay, skyOffset);
+    drawRoad(position, playerX, playerZdist, cameraDepth, timeOfDay);
+    drawPlayerCar();
+    drawHUD(speed, maxSpeed, currentLapTime, bestLapTime);
+    drawRaceResults();
+    spr.pushSprite(0, 0);
+
+    // Auto-restart after 3 seconds
+    static unsigned long finishTime = 0;
+    if (finishTime == 0) finishTime = millis();
+    if (millis() - finishTime > 3000) {
+      finishTime = 0;
+      // Full reset
+      initPhysics();
+      buildTrack();
+      initCompetitors(maxSpeed);
+      countdownStart = millis();
+      gameState = STATE_COUNTDOWN;
+    }
+    return;
+  }
+
+  // ── STATE: RACING ─────────────────────────────────────────────
   if (!crashed) {
     handleInput(dt);
     updatePhysics(dt);
+    updateCompetitors(dt);
     checkCollisions();
 
-    // --- MAGIA DEL PARALLAX ---
-    // El fondo se mueve según la curva y velocidad (efecto Horizon Chase)
+    // Parallax sky scroll
     int pSeg = findSegIdx(position + playerZdist);
     float curveForce = segments[pSeg].curve;
-    // Factor 150.0 controla velocidad de rotación del fondo
     skyOffset += curveForce * (speed / maxSpeed) * 150.0f * dt;
+
+    // Check if player finished all laps
+    if (currentLap > totalLaps) {
+      gameState = STATE_FINISHED;
+    }
   }
 
-  // Renderizar frame en el sprite (buffer)
+  // Render frame
   drawSky(position, playerZdist, timeOfDay, skyOffset);
   drawRoad(position, playerX, playerZdist, cameraDepth, timeOfDay);
   drawPlayerCar();
   drawHUD(speed, maxSpeed, currentLapTime, bestLapTime);
 
-  // Mostrar mensaje de crash
+  // Crash overlay
   if (crashed) {
     drawCrashMessage();
     if (millis() - crashTimer > 2000) {
@@ -127,10 +181,9 @@ void loop() {
     }
   }
 
-  // Enviar el frame completo a la pantalla (double buffering)
   spr.pushSprite(0, 0);
 
-  // Cambiar hora del día según distancia recorrida
+  // Time of day progression
   distSinceTimeChange += (int)(speed * dt);
   if (distSinceTimeChange > 180000) {
     distSinceTimeChange = 0;

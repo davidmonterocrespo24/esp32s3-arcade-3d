@@ -7,6 +7,7 @@
 #include "render_road.h"
 #include "rendering.h"
 #include "render_traffic.h"
+#include "render_player.h"
 #include "config.h"
 #include "colors.h"
 #include "utils.h"
@@ -354,11 +355,13 @@ void drawRoad(float position, float playerX, float playerZdist,
       drawSpriteShape(seg.spriteType, sprX, p1.y, p1.scale, rClip[n], timeOfDay);
     }
 
-    // Traffic
-    for (int c = 0; c < MAX_CARS; c++) {
-      if (findSegIdx(trafficCars[c].z) != sIdx) continue;
-      int carX = p1.x + (int)(p1.scale * trafficCars[c].offset * ROAD_W * SCR_CX);
-      drawTrafficCar(carX, p1.y, p1.scale, trafficCars[c].color, rClip[n]);
+    // Competitors — rendered as scaled 3D mesh (flat-shaded)
+    for (int c = 0; c < NUM_COMPETITORS; c++) {
+      if (findSegIdx(competitors[c].z) != sIdx) continue;
+      int carX = p1.x + (int)(p1.scale * competitors[c].x * ROAD_W * SCR_CX);
+      int carY = (int)p1.y;
+      if (carY >= SCR_H || carY <= 0) continue;
+      drawCompetitorCar(carX, carY, p1.scale, competitors[c].color, competitors[c].driftAngle);
     }
   }
 }

@@ -9,10 +9,18 @@
 #include "utils.h"
 #include "config.h"
 #include <Arduino.h>
+#include <math.h>
 
 // ═══════════════════════════════════════════════════════════════
 //  GLOBAL VARIABLES (Definition)
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════════════════
+GameState gameState    = STATE_COUNTDOWN;
+unsigned long countdownStart = 0;
+bool raceResultShown   = false;
+
 float cameraDepth;
 float playerZdist;
 float position   = 0;
@@ -60,6 +68,11 @@ void initPhysics() {
   velocityX    = 0;
   acceleration = 0;
   driftAngle   = 0;
+
+  // Start in countdown state
+  gameState      = STATE_COUNTDOWN;
+  countdownStart = millis();
+  raceResultShown = false;
 }
 
 void handleInput(float dt) {
@@ -162,7 +175,8 @@ void updatePhysics(float dt) {
   }
   currentLapTime += dt;
 
-  // Update traffic
+#if MAX_CARS > 0
+  // Update traffic (disabled in race mode)
   for (int i = 0; i < MAX_CARS; i++) {
     trafficCars[i].z = loopIncrease(trafficCars[i].z, dt * trafficCars[i].speed, trackLength);
     if (random(0, 200) < 2) {
@@ -170,6 +184,7 @@ void updatePhysics(float dt) {
       trafficCars[i].offset  = clampF(trafficCars[i].offset, -0.8, 0.8);
     }
   }
+#endif
 }
 
 void checkCollisions() {
@@ -177,7 +192,8 @@ void checkCollisions() {
   int pSeg = findSegIdx(position + playerZdist);
   Segment& s = segments[pSeg];
 
-  // Collisions with traffic
+#if MAX_CARS > 0
+  // Collisions with traffic (disabled in race mode)
   for (int i = 0; i < MAX_CARS; i++) {
     int cs = findSegIdx(trafficCars[i].z);
     int d  = abs(cs - pSeg);
@@ -191,6 +207,7 @@ void checkCollisions() {
       }
     }
   }
+#endif
 
   // Collisions with tunnel walls
   if (s.tunnel) {
@@ -223,6 +240,116 @@ void checkCollisions() {
     if (speed > maxSpeed * 0.4) {
       crashed = true;
       crashTimer = millis();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AI COMPETITOR UPDATE
+// ═══════════════════════════════════════════════════════════════
+void updateCompetitors(float dt) {
+  for (int i = 0; i < NUM_COMPETITORS; i++) {
+    CompetitorCar& c = competitors[i];
+    float compMax = maxSpeed * c.speedFactor;
+
+    // Progressive acceleration (same logic as player)
+    float targetAccel = compMax * ACCEL_TARGET;
+    if (c.speed < compMax * ACCEL_NEAR_MAX) {
+      c.acceleration += ACCEL_RAMP * dt;
+      if (c.acceleration > targetAccel) c.acceleration = targetAccel;
+    } else {
+      c.acceleration *= ACCEL_DAMPING;
+    }
+
+    // Gravity / slope effect
+    int pSeg = findSegIdx(c.z);
+    int prevSeg = (pSeg - 1 + TOTAL_SEGS) % TOTAL_SEGS;
+    float slope = (segments[pSeg].y - segments[prevSeg].y) / SEG_LEN;
+    c.acceleration += -slope * GRAVITY_FACTOR * dt;
+
+    // Friction + apply acceleration
+    c.speed *= FRICTION;
+    c.speed += c.acceleration * dt;
+    if (c.speed > compMax) c.speed = compMax;
+    if (c.speed < 0) c.speed = 0;
+
+    float spPct = c.speed / maxSpeed;
+
+    // Counter-steer based on upcoming curve
+    float curCurve = segments[pSeg].curve;
+    float target = -curCurve * 0.12f;
+    float steer = (target - c.x) * STEER_AUTO * c.steerFactor * dt;
+    c.x += steer;
+
+    // Centrifugal drift
+    float curveForce = curCurve * CENTRIFUGAL * spPct;
+    c.velocityX += curveForce * dt * CURVE_FORCE;
+    c.velocityX *= LATERAL_FRICTION;
+    c.x -= c.velocityX * dt;
+
+    // Additional centrifugal push
+    float steerDx = dt * CENTRIFUGAL_DX * spPct;
+    c.x -= steerDx * spPct * curCurve * CENTRIFUGAL;
+
+    c.x = clampF(c.x, -0.8f, 0.8f);
+
+    // Visual drift angle
+    if (c.speed > 0.1f) {
+      c.driftAngle = atan2f(c.velocityX * 10.0f, c.speed / maxSpeed) * 0.5f;
+      c.driftAngle = clampF(c.driftAngle, -0.5f, 0.5f);
+    } else {
+      c.driftAngle *= 0.9f;
+    }
+
+    // Advance position
+    float prevZ = c.z;
+    c.z = loopIncrease(c.z, dt * c.speed, trackLength);
+
+    // Lap detection (same as player)
+    if (c.z < prevZ && prevZ > trackLength * 0.9f) {
+      if (c.lap < totalLaps) {
+        c.lap++;
+      }
+    }
+  }
+
+  // Check collisions between competitors
+  for (int i = 0; i < NUM_COMPETITORS; i++) {
+    for (int j = i + 1; j < NUM_COMPETITORS; j++) {
+      // Calculate relative position
+      float dx = competitors[i].x - competitors[j].x;
+      float dz = competitors[i].z - competitors[j].z;
+
+      // Handle track wrapping (if cars are on opposite sides of start/finish)
+      if (dz > trackLength / 2) dz -= trackLength;
+      if (dz < -trackLength / 2) dz += trackLength;
+
+      // Check collision distance
+      // Lateral: ~0.3 units, longitudinal: ~1.5 segments = 300 units
+      const float MIN_LATERAL = 0.3f;
+      const float MIN_LONGITUDINAL = 300.0f;
+
+      if (fabsf(dx) < MIN_LATERAL && fabsf(dz) < MIN_LONGITUDINAL) {
+        // Collision detected — apply separation force
+
+        // Lateral separation (push apart sideways)
+        float pushX = (dx > 0 ? 0.5f : -0.5f) * dt * 2.0f;
+        competitors[i].x += pushX;
+        competitors[j].x -= pushX;
+
+        // Longitudinal separation (slow down the car behind)
+        if (dz > 0) {
+          // i is ahead, slow down j
+          competitors[j].speed *= 0.95f;
+        } else {
+          // j is ahead, slow down i
+          competitors[i].speed *= 0.95f;
+        }
+
+        // Clamp positions
+        competitors[i].x = clampF(competitors[i].x, -0.8f, 0.8f);
+        competitors[j].x = clampF(competitors[j].x, -0.8f, 0.8f);
+      }
     }
   }
 }
