@@ -6,6 +6,14 @@ An OutRun-style pseudo-3D racing game for the ESP32-S3 microcontroller with an I
 
 ## Screenshots
 
+### Video Demo
+
+https://packaged-media.redd.it/cb0362oun6jg1/pb/m2-res_1920p.mp4?m=DASHPlaylist.mpd&v=1&e=1771009200&s=b7393bf2a683d5a3e89ddf6150910f6550133eeb
+
+### Images
+
+![ESP32 Hardware](img/hardesp32.webp)
+
 ![Game Screenshot 1](img/Captura%20de%20pantalla%202026-02-13%20112753.png)
 
 ![Game Screenshot 2](img/Captura%20de%20pantalla%202026-02-13%20112759.png)
