@@ -68,10 +68,16 @@ void buildTrack() {
   // Pista aleatoria: combina rectas, curvas y subidas/bajadas
   int pendingReturnDir = 0;
   float pendingReturnMag = 0.0f;
-  while (segCount < TOTAL_SEGS) {
+  // Reservar segmentos al final para la sección niveladora de cierre
+  const int CLOSE_SEGS = 20;
+  while (segCount < TOTAL_SEGS - CLOSE_SEGS) {
     int enter = random(4, 8);
     int hold  = random(6, 14);
     int leave = random(4, 8);
+    int needed = enter + hold + leave;
+
+    // Si no hay espacio suficiente para esta sección completa, parar aquí
+    if (segCount + needed > TOTAL_SEGS - CLOSE_SEGS) break;
 
     float curve = (float)random(-80, 81) / 10.0f; // -8.0 a 8.0
     if (curve > -2.0f && curve < 2.0f) curve = 0.0f;
@@ -81,15 +87,40 @@ void buildTrack() {
       hill = (float)pendingReturnDir * pendingReturnMag;
       pendingReturnDir = 0;
     } else {
-      hill = (float)random(-20, 21); // -20 a 20
-      if (hill > -6.0f && hill < 6.0f) hill = 0.0f;
-      if (hill != 0.0f) {
-        pendingReturnDir = (hill > 0.0f) ? -1 : 1;
-        pendingReturnMag = max(6.0f, fabsf(hill) * 0.6f);
+      // Limitar hillY para que el track no acumule alturas extremas
+      float currentY = lastY();
+      float maxAllowedHill = 8.0f; // Máximo delta por sección
+      if (fabsf(currentY) > SEG_LEN * 4) {
+        // Si ya estamos muy alto/bajo, forzar regreso
+        hill = (currentY > 0) ? -maxAllowedHill : maxAllowedHill;
+      } else {
+        hill = (float)random(-12, 13); // rango reducido: -12 a 12
+        if (hill > -6.0f && hill < 6.0f) hill = 0.0f;
+        if (hill != 0.0f) {
+          pendingReturnDir = (hill > 0.0f) ? -1 : 1;
+          pendingReturnMag = max(6.0f, fabsf(hill) * 0.6f);
+        }
       }
     }
 
     addRoad(enter, hold, leave, curve, hill);
+  }
+
+  // Sección de cierre: nivelar el Y de regreso a 0 para que el loop sea coherente
+  {
+    float currentY = lastY();
+    if (fabsf(currentY) > SEG_LEN * 0.5f) {
+      // Calcular hillY necesario para regresar a 0
+      int closeSegsLeft = TOTAL_SEGS - CLOSE_SEGS - segCount;
+      int enter = max(4, closeSegsLeft / 3);
+      int hold  = 2;
+      int leave = max(4, closeSegsLeft / 3);
+      // hillY tal que sY + hillY*SEG_LEN = 0 → hillY = -sY/SEG_LEN
+      float hillY = -currentY / (float)SEG_LEN;
+      // Limitar magnitud
+      hillY = max(-14.0f, min(14.0f, hillY));
+      addRoad(enter, hold, leave, 0.0f, hillY);
+    }
   }
 #else
   // Circuito variado que alterna curvas izq/der y sube/baja constantemente
@@ -140,11 +171,11 @@ void buildTrack() {
       // 50% probabilidad de edificio, 50% hueco (Menos juntos: "no tan juntos")
       if (random(0, 10) < 5) {
         // Altura EXTREMA (Rascacielos)
-        curBuildL = random(400000, 1000000); 
-        
+        curBuildL = random(400000, 1000000);
+
         // Colores más variados y urbanos
         curColL = rgb(random(40, 140), random(40, 120), random(50, 130));
-        
+
         // MUCHO MÁS ANCHOS (Segmentos)
         buildCounterL = random(20, 45);
       } else {
@@ -158,8 +189,8 @@ void buildTrack() {
 
     // --- LADO DERECHO (Lógica independiente) ---
     if (buildCounterR <= 0) {
-      if (random(0, 10) < 6) { 
-        curBuildR = random(400000, 1000000); 
+      if (random(0, 10) < 6) {
+        curBuildR = random(400000, 1000000);
         curColR = rgb(random(40, 140), random(40, 120), random(50, 130));
         buildCounterR = random(20, 45); // Más segmentos
       } else {
