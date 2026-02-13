@@ -77,12 +77,6 @@ void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int t
 void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset) {
   int pSegIdx = findSegIdx(position + playerZdist);
 
-  // Si estamos en túnel, NO dibujar nada aquí - el techo se dibuja en el loop 3D
-  if (segments[pSegIdx].tunnel) {
-    // Dejar vacío para que el techo 3D sea visible
-    return;
-  }
-
   // --- EFECTO PARALLAX INFINITO (Estilo Horizon Chase) ---
 
   // Fallback si la PSRAM falló
@@ -245,6 +239,18 @@ void drawRoad(float position, float playerX, float playerZdist,
        int ceilR0 = roadR0;
        int ceilL1 = roadL1;
        int ceilR1 = roadR1;
+
+       // 0. INTERIOR DEL TÚNEL (negro) — tapa el cielo/fondo que se ve por los huecos
+       // Rellena el rectángulo que abarca todo el ancho del túnel entre suelo y techo
+       {
+         int intTop = min(cy0, cy1);
+         int intBot = max((int)p0.y, (int)p1.y);
+         int intL   = min(roadL0, roadL1);
+         int intR   = max(roadR0, roadR1);
+         intL = max(intL, 0); intR = min(intR, SCR_W);
+         if (intBot > intTop && intR > intL)
+           spr.fillRect(intL, intTop, intR - intL, intBot - intTop, TFT_BLACK);
+       }
 
        // 1. TECHO (espejo de la carretera)
        // Vértices: izquierda-cerca, derecha-cerca, derecha-lejos, izquierda-lejos
