@@ -264,6 +264,18 @@ void drawRoad(float position, float playerX, float playerZdist,
 
        // 3. Pared Derecha VERTICAL
        drawQuad(roadR0, p0.y, ceilR0, cy0, ceilR1, cy1, roadR1, p1.y, wallT);
+
+       // 4. BOCA DEL TÚNEL — jamba frontal (solo en el primer segmento tunnel)
+       if (!prevSeg.tunnel) {
+         int thickness = 50;
+         uint16_t jambaCol = rgb(60, 60, 65);
+         // Jamba izquierda: rectángulo a la izquierda de roadL0
+         spr.fillRect(roadL0 - thickness, cy0, thickness, p0.y - cy0, jambaCol);
+         // Jamba derecha: rectángulo a la derecha de roadR0
+         spr.fillRect(roadR0, cy0, thickness, p0.y - cy0, jambaCol);
+         // Dintel (parte de arriba)
+         spr.fillRect(roadL0 - thickness, cy0, roadR0 - roadL0 + thickness * 2, thickness, jambaCol);
+       }
     }
 
     // EDIFICIOS 3D CON VENTANAS (Estilo Horizon Chase/Nueva York)
