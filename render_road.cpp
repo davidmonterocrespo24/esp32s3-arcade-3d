@@ -217,7 +217,9 @@ void drawRoad(float position, float playerX, float playerZdist,
     // ── TÚNEL EN 3D ──────────────────────────────────────────────────────────
     if (seg.tunnel) {
        bool isLightT = ((sIdx / 3) % 2) == 0;
-       uint16_t wallT = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);
+       float fogT = expFog((float)n / DRAW_DIST, FOG_DENSITY);
+       uint16_t wallBase = isLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);
+       uint16_t wallT = lerpCol(wallBase, TFT_BLACK, fogT * 0.85f);
        bool isLightCeil = ((sIdx / RUMBLE_LEN) % 2) == 0;
        uint16_t ceilColor = isLightCeil ? colRoadL : colRoadD;
 
@@ -238,6 +240,17 @@ void drawRoad(float position, float playerX, float playerZdist,
        drawQuad(roadL0, cy0, roadR0, cy0, roadR1, cy1, roadL1, cy1, ceilColor);
        drawQuad(roadL0, p0.y, roadL1, p1.y, roadL1, cy1, roadL0, cy0, wallT);
        drawQuad(roadR0, p0.y, roadR0, cy0, roadR1, cy1, roadR1, p1.y, wallT);
+
+       // LUCES DEL TECHO — rectángulos amarillos cada 4 segmentos
+       if ((sIdx % 4) == 0) {
+         int lx0 = (roadL0 + roadR0) / 2;
+         int lx1 = (roadL1 + roadR1) / 2;
+         int lw0 = max(2, (roadR0 - roadL0) / 4);
+         int lw1 = max(1, (roadR1 - roadL1) / 4);
+         drawQuad(lx0 - lw0/2, cy0, lx0 + lw0/2, cy0,
+                  lx1 + lw1/2, cy1, lx1 - lw1/2, cy1,
+                  rgb(255, 220, 0));
+       }
 
        if (!prevSeg.tunnel) {
          int thickness = 50;
@@ -291,7 +304,8 @@ void drawRoad(float position, float playerX, float playerZdist,
 
       if (seg.tunnel) {
         bool iLightT = ((sIdx / 3) % 2) == 0;
-        uint16_t wCol = iLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);
+        uint16_t wBase = iLightT ? rgb(80, 120, 200) : rgb(50, 80, 150);
+        uint16_t wCol = lerpCol(wBase, TFT_BLACK, fogF * 0.85f);
         int wallW = max(2, hw / 5);
         int wlR = max(0, min(rdL, SCR_W)), wlL = max(0, rdL - wallW);
         if (wlR > wlL) spr.fillRect(wlL, subTop, wlR - wlL, subH, wCol);

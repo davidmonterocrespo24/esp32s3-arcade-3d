@@ -53,7 +53,7 @@ void drawTrafficCar(int cx, int cy, float scale, uint16_t col, int16_t clipY) {
     if (cross > 0) {
       // Verificar que está dentro del clip
       float maxY = max(max(sy[v0], sy[v1]), max(sy[v2], sy[v3]));
-      if (maxY > clipY) return;
+      if (maxY < clipY) return;
       drawQuad(sx[v0], sy[v0], sx[v1], sy[v1], sx[v2], sy[v2], sx[v3], sy[v3], faceCol);
     }
   };
