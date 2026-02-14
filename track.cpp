@@ -244,9 +244,9 @@ static const uint16_t competitorColors[NUM_COMPETITORS] = {
   0xFFE0   // Yellow
 };
 
-// Starting grid positions (slightly ahead of player at z=0 so they're visible)
-// Player at z=0, competitors at z=200-800 (1-4 segments ahead, will be passed quickly)
-static const float gridZ[NUM_COMPETITORS]  = { 2.0f * SEG_LEN, 2.0f * SEG_LEN, 4.0f * SEG_LEN };
+// Starting grid positions (far enough ahead to be in renderable range)
+// Segments 0-5 are too close (p1.scale issues), use segments 10-15
+static const float gridZ[NUM_COMPETITORS]  = { 10.0f * SEG_LEN, 10.0f * SEG_LEN, 15.0f * SEG_LEN };
 static const float gridX[NUM_COMPETITORS]  = { -0.3f, 0.3f, 0.0f };
 // Slight variation per competitor so they don't all drive identically
 static const float speedFactors[NUM_COMPETITORS] = { 1.00f, 0.97f, 1.03f };

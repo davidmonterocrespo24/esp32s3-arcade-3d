@@ -342,7 +342,7 @@ void drawRoad(float position, float playerX, float playerZdist,
   }
 
   // --- THIRD PASS: SPRITES AND TRAFFIC ON TOP OF EVERYTHING ---
-  for (int n = DRAW_DIST - 1; n > 1; n--) {
+  for (int n = DRAW_DIST - 1; n >= 0; n--) {
     int sIdx = (baseIdx + n) % TOTAL_SEGS;
     Segment& seg = segments[sIdx];
     RenderPt& p1 = rCache[n];
@@ -357,10 +357,13 @@ void drawRoad(float position, float playerX, float playerZdist,
 
     // Competitors — rendered as scaled 3D mesh (flat-shaded)
     for (int c = 0; c < NUM_COMPETITORS; c++) {
-      if (findSegIdx(competitors[c].z) != sIdx) continue;
+      int compSegIdx = findSegIdx(competitors[c].z);
+      if (compSegIdx != sIdx) continue;
+
       int carX = p1.x + (int)(p1.scale * competitors[c].x * ROAD_W * SCR_CX);
       int carY = (int)p1.y;
       if (carY >= SCR_H || carY <= 0) continue;
+
       drawCompetitorCar(carX, carY, p1.scale, competitors[c].color, competitors[c].driftAngle);
     }
   }

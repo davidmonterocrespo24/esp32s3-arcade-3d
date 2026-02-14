@@ -334,8 +334,7 @@ void drawPlayerCar() {
 void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, float driftAngle) {
   // Use scale directly from road projection
   // Scale is already correct: cameraDepth / (z + cameraDepth)
-
-  if (scale < 0.002f) return;  // Too far/small to draw
+  // No minimum scale check - let amplifiedScale handle visibility
 
   // Shadow (amplified to match car size)
   float amplifiedScale = scale * 3.5f;
