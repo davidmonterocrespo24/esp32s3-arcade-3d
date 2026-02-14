@@ -244,9 +244,9 @@ static const uint16_t competitorColors[NUM_COMPETITORS] = {
   0xFFE0   // Yellow
 };
 
-// Starting grid positions (staggered behind player at z=0)
-// Negative z wraps to trackLength - offset
-static const float gridZ[NUM_COMPETITORS]  = { -2.0f * SEG_LEN, -2.0f * SEG_LEN, -4.0f * SEG_LEN };
+// Starting grid positions (slightly ahead of player at z=0 so they're visible)
+// Player at z=0, competitors at z=200-800 (1-4 segments ahead, will be passed quickly)
+static const float gridZ[NUM_COMPETITORS]  = { 2.0f * SEG_LEN, 2.0f * SEG_LEN, 4.0f * SEG_LEN };
 static const float gridX[NUM_COMPETITORS]  = { -0.3f, 0.3f, 0.0f };
 // Slight variation per competitor so they don't all drive identically
 static const float speedFactors[NUM_COMPETITORS] = { 1.00f, 0.97f, 1.03f };
@@ -254,9 +254,7 @@ static const float steerFactors[NUM_COMPETITORS] = { 1.0f,  1.1f,  0.9f  };
 
 void initCompetitors(float maxSpeed) {
   for (int i = 0; i < NUM_COMPETITORS; i++) {
-    float z = gridZ[i];
-    if (z < 0) z += trackLength;  // Wrap to end of track (behind start)
-    competitors[i].z            = z;
+    competitors[i].z            = gridZ[i];  // Use grid positions directly (already positive)
     competitors[i].x            = gridX[i];
     competitors[i].speed        = 0.0f;
     competitors[i].velocityX    = 0.0f;

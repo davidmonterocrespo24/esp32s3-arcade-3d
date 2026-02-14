@@ -241,13 +241,18 @@ static void renderCompetitorSimple(int cx, int cy, float scale, float angle, uin
 
   float sx[16], sy[16];
 
+  // Amplify scale to match player car proportions
+  // Player car uses fov=130, competitors use road scale
+  // At starting grid (2 segs behind): scale ≈ 0.006, needs ~20× amplification
+  float amplifiedScale = scale * 3.5f;
+
   // Project vertices with rotation
   for (int i = 0; i < 16; i++) {
     float rx = verts[i][0] * cosA - verts[i][2] * sinA;
     float ry = verts[i][1];
 
-    sx[i] = cx + (rx * scale * SCR_CX);
-    sy[i] = cy - (ry * scale * SCR_CY);
+    sx[i] = cx + (rx * amplifiedScale * SCR_CX);
+    sy[i] = cy - (ry * amplifiedScale * SCR_CY);
   }
 
   // Backface culling + draw faces
@@ -332,10 +337,11 @@ void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, fl
 
   if (scale < 0.002f) return;  // Too far/small to draw
 
-  // Shadow
-  int shadowRx = max(2, (int)(scale * 1600.0f));
+  // Shadow (amplified to match car size)
+  float amplifiedScale = scale * 3.5f;
+  int shadowRx = max(2, (int)(amplifiedScale * 1600.0f));
   int shadowRy = max(1, shadowRx / 7);
-  int shadowY  = screenY - (int)(scale * 200.0f);
+  int shadowY  = screenY - (int)(amplifiedScale * 200.0f);
   uint16_t shadowCol = rgb(10, 10, 10);
   for (int dy = -shadowRy; dy <= shadowRy; dy++) {
     float t  = (float)dy / shadowRy;
