@@ -364,7 +364,14 @@ void drawRoad(float position, float playerX, float playerZdist,
       int carY = (int)p1.y;
       if (carY >= SCR_H || carY <= 0) continue;
 
-      drawCompetitorCar(carX, carY, p1.scale, competitors[c].color, competitors[c].driftAngle);
+      // Calculate exact distance from player to competitor
+      float competitorDistance = competitors[c].z - position;
+      // Handle track wrapping
+      if (competitorDistance < 0) competitorDistance += trackLength;
+      if (competitorDistance > trackLength / 2) competitorDistance -= trackLength;
+
+      // Pass exact distance for proper perspective projection
+      drawCompetitorCar(carX, carY, competitorDistance, competitors[c].color, competitors[c].driftAngle);
     }
   }
 }

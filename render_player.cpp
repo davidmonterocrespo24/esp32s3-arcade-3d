@@ -222,7 +222,7 @@ static void renderCar2Mesh(int centerX, int centerY,
 // Simple 16-vertex competitor car renderer (optimized for performance)
 // Based on traffic car model but with rotation support
 // ---------------------------------------------------------------------------
-static void renderCompetitorSimple(int cx, int cy, float scale, float angle, uint16_t col) {
+static void renderCompetitorSimple(int cx, int cy, float fov, float camDist, float camZ, float angle, uint16_t col) {
   // FIX: Negate angle for correct rotation direction
   angle = -angle;
 
@@ -241,18 +241,19 @@ static void renderCompetitorSimple(int cx, int cy, float scale, float angle, uin
 
   float sx[16], sy[16];
 
-  // Amplify scale to match player car proportions
-  // Player car uses fov=130, competitors use road scale
-  // At starting grid (2 segs behind): scale ≈ 0.006, needs ~20× amplification
-  float amplifiedScale = scale * 3.5f;
+  // Use perspective projection (same as player car)
+  // px = centerX + (rx * fov) / (z + camDist)
+  float z = camZ + camDist;
+  if (z <= 0.1f) return;  // Too close or behind camera
 
-  // Project vertices with rotation
+  // Project vertices with rotation and perspective
   for (int i = 0; i < 16; i++) {
     float rx = verts[i][0] * cosA - verts[i][2] * sinA;
     float ry = verts[i][1];
 
-    sx[i] = cx + (rx * amplifiedScale * SCR_CX);
-    sy[i] = cy - (ry * amplifiedScale * SCR_CY);
+    // Perspective projection (like player car)
+    sx[i] = cx + (rx * fov) / z;
+    sy[i] = cy - (ry * fov) / z;
   }
 
   // Backface culling + draw faces
@@ -331,19 +332,21 @@ void drawPlayerCar() {
   renderCar2Mesh(centerX, centerY, rotY, pitch, 6.5f, 130.0f);
 }
 
-void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, float driftAngle) {
-  // Use scale directly from road projection
-  // Scale is already correct: cameraDepth / (z + cameraDepth)
-  // No minimum scale check - let amplifiedScale handle visibility
+void drawCompetitorCar(int screenX, int screenY, float camZ, uint16_t color, float driftAngle) {
+  // Use perspective projection (same system as player car)
+  float fov = 130.0f;
+  float camDist = 6.5f;
 
-  // Shadow (amplified to match car size)
-  float amplifiedScale = scale * 3.5f;
-  int shadowRx = max(2, (int)(amplifiedScale * 1600.0f));
+  float z = camZ + camDist;
+  if (z <= 0.1f) return;  // Too close or behind camera
+
+  // Shadow size based on perspective distance
+  int shadowRx = max(2, (int)(40.0f * fov / z));
   int shadowRy = max(1, shadowRx / 7);
-  int shadowY  = screenY - (int)(amplifiedScale * 200.0f);
+  int shadowY  = screenY - shadowRy;
   uint16_t shadowCol = rgb(10, 10, 10);
   for (int dy = -shadowRy; dy <= shadowRy; dy++) {
-    float t  = (float)dy / shadowRy;
+    float t  = (float)dy / (float)shadowRy;
     int   hw = (int)(shadowRx * sqrtf(1.0f - t * t));
     int   sy = shadowY + dy;
     if (sy < 0 || sy >= SCR_H) continue;
@@ -352,8 +355,8 @@ void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, fl
     if (x1 > x0) spr.drawFastHLine(x0, sy, x1 - x0, shadowCol);
   }
 
-  // Car body with corrected rotation
-  renderCompetitorSimple(screenX, screenY, scale, driftAngle, color);
+  // Car body with corrected rotation and perspective projection
+  renderCompetitorSimple(screenX, screenY, fov, camDist, camZ, driftAngle, color);
 }
 
 void drawStartScreen(float time) {

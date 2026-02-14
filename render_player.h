@@ -18,7 +18,7 @@ void drawStartScreen(float time);
 // Draws the crash message
 void drawCrashMessage();
 
-// Draws a competitor car at screen position with given scale and flat color
-void drawCompetitorCar(int screenX, int screenY, float scale, uint16_t color, float driftAngle);
+// Draws a competitor car at screen position with perspective projection
+void drawCompetitorCar(int screenX, int screenY, float camZ, uint16_t color, float driftAngle);
 
 #endif // RENDER_PLAYER_H
