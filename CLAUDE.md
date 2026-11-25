@@ -18,69 +18,76 @@ taskkill /F /IM car_game_emu.exe 2>nul
 rm -f car_game_emu.exe && make
 ```
 
-**Hardware target:** ESP32-S3 with ILI9341 320×240 SPI display, compiled via Arduino IDE.
+**Headless renderer (no Raylib; works in WSL/Linux):** `cd emulator && make headless`, then
+`./car_game_headless <outdir> <frames> [--cycle C] [--pos Z] [--steer A:B:V] [frames to save...]`
+writes PPM frames. Use it to check rendering changes visually.
+
+**Hardware target:** ESP32-S3 + ILI9341 320×240 SPI, Arduino IDE, Arduino-ESP32 core 3.x.
+Tools → PSRAM: OPI PSRAM, Tools → USB CDC On Boot: Enabled. Board/pins in `board.h`
+(default: XIAO ESP32S3 Sense handheld, same unit as the mgs_reversing / sotn-decomp ports).
+No TFT_eSPI: the panel is driven with ESP-IDF `esp_lcd` SPI + DMA.
 
 ## Architecture
 
-Pseudo-3D OutRun-style racing game. The same source compiles for ESP32 hardware and Windows (via `emulator/` mocks for Arduino API and TFT display using Raylib).
+Pseudo-3D arcade racer. The same source compiles for ESP32 hardware and PC.
+Everything draws into one software RGB565 framebuffer (`gfx.cpp`); only
+`display_*.cpp` / `input_*.cpp` (and `emulator/host_io.cpp`) are platform specific.
 
-**Game loop** (`car_game.ino`):
-1. `handleInput(dt)` — autopilot steering
-2. `updatePhysics(dt)` — speed, acceleration, lateral drift
-3. `checkCollisions()` — crashes with traffic/sprites/walls
-4. Render: `drawSky()` → `drawRoad()` → `drawPlayerCar()` → `drawHUD()`
-5. `spr.pushSprite(0,0)` — flip double buffer to display
+**Game loop** (`car_game.ino`): title state → race state.
+1. `input_read()` → `handleInput(dt, in)` — manual steering, autopilot after 8 s idle
+2. `updatePhysics(dt)` — speed, gravity, drift, traffic, laps (frame-rate independent)
+3. `checkCollisions()`
+4. `advanceDayCycle(distance)` — palette blend day → sunset → night → dawn
+5. Render: `drawSky()` → `drawRoad()` → `drawPlayerCar()` → `drawHUD()`
+6. `display_present(gfx_fb)` — ESP32: copy to a PSRAM snapshot (or drop the frame if
+   the panel is busy); a task on core 0 byte-swaps 8-line bands into DMA buffers and
+   streams them, skipping bands identical to the previous frame
 
-**Rendering pipeline** (`render_road.cpp`):
-- Single back-to-front loop per frame draws buildings, tunnel, and road together (painter's algorithm)
-- `rCache[DRAW_DIST]` holds projected screen coordinates for each segment
-- `rClip[DRAW_DIST]` holds the `maxy` horizon clipping value per segment
-- `drawQuad()` = two `fillTriangle()` calls for trapezoids
+**Road pass** (`render_road.cpp`): pass 1 front-to-back projects segment boundaries and
+records `clipRow` per segment; pass 2 back-to-front draws, per segment: road scanlines
+(`gfx_rowRegions`, AA edges, per-row fog), buildings, tunnel walls/ceiling, sprites,
+lamps, traffic, tunnel portal — all clipped to `clipRow`.
 
-**Player car** (`render_player.cpp`): OBJ mesh loaded as C static array (`car2_mesh.h`), texture as RGB565 header (`car2_texture.h`). Rendered with scanline affine texture mapping + painter's algorithm (insertion sort on Z).
+**Cars** (`render_player.cpp`): `renderCar(CarRender)` — mesh `car2_mesh.h` (with smoothed
+normals), texture copied to internal RAM with a paint flag in the green LSB (traffic repaint),
+per-vertex Gouraud diffuse + specular + sky reflection, perspective-correct UVs, triangle
+gradients from plane equations, painter's sort. Front of the model is +z; tail lights at
+(±0.85, 1.22, -3.2).
 
-**Track** (`track.cpp`): `segments[TOTAL_SEGS]` array. Each `Segment` stores curve, elevation Y, tunnel flag, building heights, colors. `buildTrack()` generates the full track on init.
+**Track** (`track.cpp`): `segments[TOTAL_SEGS]` (16-byte `Segment`). `buildTrack()` generates
+curves/hills, closes the elevation loop exactly, marks 2 tunnels, city blocks, scenery, lamps.
 
 ## Key Constants (all in `config.h`)
 
-World scale: `ROAD_W=2000` ≈ 10.5m real → 1 unit ≈ 5.25mm. `SEG_LEN=200`.
-
-Physics tuning lives entirely in `config.h`:
-- `SPEED_MULTIPLIER` — max speed (65.0 ≈ 246 km/h)
-- `FRICTION` — coast-down rate (0.996 = ~3.3s from max)
-- `CENTRIFUGAL` — curve drift force
-- `GRAVITY_FACTOR` — hill acceleration effect
-
-Building size/density: `BUILDING_H_MIN/MAX`, `BUILDING_SEG_MIN/MAX`, `BUILDING_GAP_MIN/MAX`.
+World: `ROAD_W=2000` (road half-width), `SEG_LEN=200`, `DRAW_DIST=90`, `TOTAL_SEGS=1000`.
+Physics per-frame factors (`FRICTION`, `LATERAL_FRICTION`, `ACCEL_DAMPING`) are defined at
+60 Hz and rescaled with `powf(f, dt*60)`. Gravity acts on speed (not on the throttle state).
+Day cycle: `CYCLE_PHASE_DIST`, `CYCLE_BLEND`, `CYCLE_START`. Player paint: `PLAYER_PAINT`.
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `config.h` | **All tunable constants** — physics, buildings, screen, track |
-| `structs.h` | `Segment`, `RenderPt`, `TrafficCar` data structures |
-| `physics.cpp` | Speed, drift, gravity, collision detection, lap timing |
-| `track.cpp` | Procedural track generation, building/tunnel placement |
-| `render_road.cpp` | Road, tunnel, buildings, fog — unified back-to-front loop |
-| `render_player.cpp` | 3D OBJ car with scanline texture rasterizer + shadow |
-| `render_building.cpp` | 3D building geometry with window styles |
-| `colors.cpp` | RGB565 palette, day/night/sunset color sets, fog lerp |
-| `utils.cpp` | `easeInOut`, `findSegIdx`, `expFog`, `lerpF`, `clampF` |
-| `emulator/TFT_eSPI.cpp` | Maps `spr.fillRect/fillTriangle` → Raylib draw calls |
-| `car2_mesh.h` | 428 vertices, 312 triangles (generated from Car2.obj) |
-| `car2_texture.h` | 128×128 RGB565 texture (generated from car2.png) |
+| `config.h` / `board.h` | Tunables / pin maps |
+| `gfx.cpp` | Framebuffer, polygons, spans, blend/add, glow, dithered rows, 5x7 font |
+| `display_esp32.cpp` | ILI9341 init + DMA scanout task (port pipeline) |
+| `colors.cpp` | Palettes (RGB888) blended into `pal` (RGB565 + light vectors) |
+| `rendering.cpp` | Sky, sun/moon, stars, clouds, parallax skyline height maps |
+| `render_road.cpp` | Road / tunnel / portal / sprites / lamps / traffic placement |
+| `render_building.cpp` | Building faces and windows |
+| `render_player.cpp` | Mesh renderer, player car, title screen, crash overlay |
+| `physics.cpp` | Physics, autopilot with traffic avoidance, collisions, laps |
+
+## Memory rules (ESP32-S3)
+
+Framebuffer, car texture, DMA bands and track live in internal SRAM; scanout snapshots in
+PSRAM. Allocate the framebuffer early (`gfx_init()` after `display_init()`). Mark per-pixel
+loops `HOT` (IRAM). Use `imin/imax/fminF/fmaxF` from `utils.h` — Arduino-ESP32 3.x `min/max`
+are std templates and reject mixed int/float arguments.
 
 ## Generating Asset Headers
 
-If `assets/Car2.obj` or `assets/car2.png` change, regenerate headers with Python:
 ```bash
-# OBJ → C header
-python assets/obj_to_header.py assets/Car2.obj > car2_mesh.h
-
-# PNG → RGB565 header (requires Pillow)
-python assets/png_to_rgb565.py assets/car2.png > car2_texture.h
+python assets/obj_to_header.py assets/Car2.obj > car2_mesh.h      # mesh + normals
+python assets/png_to_rgb565.py assets/car2.png > car2_texture.h   # requires Pillow
 ```
-
-## Emulator Internals
-
-`emulator/car_game_wrapper.cpp` `#include`s `../car_game.ino` so it compiles as C++. The `Arduino.h` mock provides `millis()`, `random()`, `digitalRead()`. `TFT_eSPI.cpp` translates all sprite drawing calls to Raylib. Keyboard arrows map to the ESP32 GPIO buttons.

@@ -1,41 +1,42 @@
+# PC builds of the game.
+#   make            -> car_game_emu.exe  (Raylib window, Windows/MinGW)
+#   make headless   -> car_game_headless (no window; writes PPM frames)
+#
+# Both compile the SAME game sources as the ESP32; only Arduino.cpp,
+# host_io.cpp and the frontend (main*.cpp) are PC-specific.
+
 # Default Raylib path. Change this if your Raylib installation is different.
 RAYLIB_PATH ?= C:/raylib
 
-# Compiler settings
-CC = g++
-CFLAGS = -I. -I.. -I$(RAYLIB_PATH)/include -O2 -std=c++17 -D_WIN32 -Wno-narrowing
-LDFLAGS = -L$(RAYLIB_PATH)/lib -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc -static-libstdc++
+CXX      ?= g++
+CXXFLAGS  = -I. -I.. -O2 -std=c++17 -Wall -Wno-unused-function -Wno-unused-variable
 
-# Source files
-SRCS = main.cpp \
-       Arduino.cpp \
-       TFT_eSPI.cpp \
-       car_game_wrapper.cpp \
-       ../colors.cpp \
-       ../utils.cpp \
-       ../track.cpp \
-       ../rendering.cpp \
-       ../render_player.cpp \
-       ../render_traffic.cpp \
-       ../render_road.cpp \
-       ../render_building.cpp \
-       ../render_hud.cpp \
-       ../physics.cpp
+GAME_SRCS = ../gfx.cpp \
+            ../colors.cpp \
+            ../utils.cpp \
+            ../track.cpp \
+            ../physics.cpp \
+            ../rendering.cpp \
+            ../render_road.cpp \
+            ../render_building.cpp \
+            ../render_player.cpp \
+            ../render_traffic.cpp \
+            ../render_hud.cpp
 
-# Object files (place them in emulator folder to avoid cluttering parent)
-OBJS = $(notdir $(SRCS:.cpp=.o))
-
-# VPATH is used to look for source files in parent directory
-VPATH = ..
+HOST_SRCS = Arduino.cpp host_io.cpp car_game_wrapper.cpp
 
 all: car_game_emu.exe
 
-car_game_emu.exe: $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+car_game_emu.exe: main.cpp $(HOST_SRCS) $(GAME_SRCS) ../*.h ../car_game.ino
+	$(CXX) $(CXXFLAGS) -I$(RAYLIB_PATH)/include main.cpp $(HOST_SRCS) $(GAME_SRCS) -o $@ \
+	  -L$(RAYLIB_PATH)/lib -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc -static-libstdc++
 
-# Rule to compile cpp files
-%.o: %.cpp
-	$(CC) $(CFLAGS) -c $< -o $@
+headless: car_game_headless
+
+car_game_headless: main_headless.cpp $(HOST_SRCS) $(GAME_SRCS) ../*.h ../car_game.ino
+	$(CXX) $(CXXFLAGS) main_headless.cpp $(HOST_SRCS) $(GAME_SRCS) -o $@
 
 clean:
-	del *.o car_game_emu.exe
+	-rm -f car_game_emu.exe car_game_headless car_game_headless.exe *.o
+
+.PHONY: all headless clean

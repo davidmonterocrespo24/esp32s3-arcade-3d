@@ -1,27 +1,22 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  ROAD, TUNNEL, AND BUILDING RENDERING
+  ROAD, TUNNEL, BUILDINGS, SCENERY AND TRAFFIC (one back-to-front pass)
   ═══════════════════════════════════════════════════════════════
 */
 
 #ifndef RENDER_ROAD_H
 #define RENDER_ROAD_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "structs.h"
 
-// Draws the road, tunnels, buildings, and scenery objects
-void drawRoad(float position, float playerX, float playerZdist,
-              float cameraDepth, int timeOfDay);
+// A projected road point: centre x, y, half-width (px), scale, camera z
+struct ProjPt { float x, y, w, scale, z; };
 
-// Draws the sky and parallax background
-void drawSky(float position, float playerZdist, int timeOfDay, float skyOffset);
+// Draws road, tunnels, buildings, sprites and traffic for the frame.
+void drawRoad(float position, float playerX, float playerZdist, float cameraDepth);
 
-// Draws a 3D building with windows
-void drawBuilding(RenderPt& p0, RenderPt& p1, int heightVal, uint16_t baseCol,
-                  int sIdx, bool isLeft, bool showFront);
-
-// Draws scenery sprites (trees, bushes, rocks, posts)
-void drawSpriteShape(int type, int sx, int sy, float scale, int16_t clipY, int timeOfDay);
+// Scenery sprite anchored at its base (sx, sy), fog 0..1
+void drawSceneSprite(int type, float sx, float sy, float scale, float fog);
 
 #endif // RENDER_ROAD_H

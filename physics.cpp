@@ -1,6 +1,9 @@
 /*
   ═══════════════════════════════════════════════════════════════
   PHYSICS AND LOGIC IMPLEMENTATION
+  All "per frame" factors from config.h are defined at 60 Hz and are
+  rescaled with powf(f, dt*60): the old code applied them once per
+  frame, so the handling changed with the frame rate.
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -9,6 +12,7 @@
 #include "utils.h"
 #include "config.h"
 #include <Arduino.h>
+#include <math.h>
 
 // ═══════════════════════════════════════════════════════════════
 //  GLOBAL VARIABLES (Definition)
@@ -30,199 +34,227 @@ float lastLapTime    = 0;
 float bestLapTime    = 0;
 float prevPosition   = 0;
 int currentLap       = 1;
-int totalLaps        = 3;
+int totalLaps        = TOTAL_LAPS;
 
-// Advanced physics variables
-float velocityX      = 0;     // Lateral velocity (for drift)
-float acceleration   = 0;     // Current acceleration
-float driftAngle     = 0;     // Drift angle
+float velocityX      = 0;
+float acceleration   = 0;
+float driftAngle     = 0;
+float steerVisual    = 0;
+bool  braking        = false;
+bool  autopilot      = true;
+float offRoad        = 0;
+
+static unsigned long lastInputMs = 0;
+
+static inline float perFrame(float f, float dt) { return powf(f, dt * 60.0f); }
 
 // ═══════════════════════════════════════════════════════════════
 //  IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════
 
 void initPhysics() {
-  float fovRad = FOV_DEG * PI / 180.0;
-  cameraDepth  = 1.0 / tanf(fovRad / 2.0);
+  float fovRad = FOV_DEG * (float)PI / 180.0f;
+  cameraDepth  = 1.0f / tanf(fovRad / 2.0f);
   playerZdist  = CAM_HEIGHT * cameraDepth;
   maxSpeed     = SEG_LEN * SPEED_MULTIPLIER;
 
-  position     = 0;
-  playerX      = 0;
-  speed        = 0;
-  crashed      = false;
+  position       = 0;
+  playerX        = 0;
+  speed          = 0;
+  crashed        = false;
   currentLapTime = 0;
   lastLapTime    = 0;
   bestLapTime    = 0;
   prevPosition   = 0;
+  currentLap     = 1;
 
-  // Initialize advanced physics
   velocityX    = 0;
   acceleration = 0;
   driftAngle   = 0;
+  steerVisual  = 0;
+  autopilot    = true;
+  lastInputMs  = 0;
 }
 
-void handleInput(float dt) {
-  // === DEMO MODE: Auto-pilot with progressive acceleration ===
+void handleInput(float dt, const InputState& in) {
+  unsigned long now = millis();
+  if (in.any) { lastInputMs = now; autopilot = false; }
+  else if (!autopilot && now - lastInputMs > AUTOPILOT_IDLE_MS) autopilot = true;
 
-  // Progressive acceleration (not instantaneous)
+  // Throttle is automatic (as designed); the brake button cuts it.
+  braking = in.brake && !autopilot;
   float targetAccel = maxSpeed * ACCEL_TARGET;
-  float accelSpeed  = ACCEL_RAMP;
-
-  if (speed < maxSpeed * ACCEL_NEAR_MAX) {
-    acceleration += accelSpeed * dt;
+  if (braking) {
+    acceleration = 0;
+    speed -= BRAKE_DECEL * dt;
+    if (speed < 0) speed = 0;
+  } else if (speed < maxSpeed * ACCEL_NEAR_MAX) {
+    acceleration += ACCEL_RAMP * dt;
     if (acceleration > targetAccel) acceleration = targetAccel;
   } else {
-    acceleration *= ACCEL_DAMPING;
+    acceleration *= perFrame(ACCEL_DAMPING, dt);
   }
 
-  // Read current curve to anticipate the turn
   int pSeg = findSegIdx(position + playerZdist);
   float curCurve = segments[pSeg].curve;
+  float spPct = speed / maxSpeed;
+  float steerCmd;
 
-  // Counter-steer according to curve + return to center
-  float target = -curCurve * 0.12;
-  float steer = (target - playerX) * STEER_AUTO * dt;
-  playerX += steer;
+  if (autopilot) {
+    // Counter-steer according to the curve, and change lane around any
+    // slower car ahead (the old autopilot drove straight into traffic).
+    float target = -curCurve * 0.12f;
+    float playerZ = position + playerZdist;
+    float nearest = 1e9f;
+    for (int i = 0; i < MAX_CARS; i++) {
+      const TrafficCar& c = trafficCars[i];
+      float dz = c.z - playerZ;
+      if (dz < -trackLength * 0.5f) dz += trackLength;
+      if (dz > trackLength * 0.5f) dz -= trackLength;
+      if (dz < -SEG_LEN || dz > SEG_LEN * 14 || dz > nearest) continue;
+      if (fabsf(c.offset - target) < 0.5f && c.speed < speed) {
+        nearest = dz;
+        // pass on the side with more room
+        float left = c.offset - 0.62f, right = c.offset + 0.62f;
+        target = (fabsf(left - playerX) < fabsf(right - playerX) && left > -0.85f) || right > 0.85f
+                 ? left : right;
+      }
+    }
+    target = clampF(target, -0.85f, 0.85f);
+    float steer = (target - playerX) * STEER_AUTO * 1.6f * dt;
+    playerX += steer;
+    steerCmd = clampF(steer / (dt * STEER_MANUAL + 1e-4f), -1, 1);
+  } else {
+    // Steering authority grows with speed (no turning on the spot)
+    float authority = 0.25f + 0.75f * clampF(spPct * 1.5f, 0, 1);
+    playerX += in.steer * STEER_MANUAL * authority * dt;
+    steerCmd = in.steer;
+  }
+  playerX = clampF(playerX, -2.5f, 2.5f);
+  if (autopilot) playerX = clampF(playerX, -0.8f, 0.8f);
 
-  playerX = clampF(playerX, -0.8, 0.8);
+  // Visual steering (car yaw) eases towards the command
+  steerVisual += (steerCmd - steerVisual) * clampF(dt * 8.0f, 0, 1);
 }
 
 void updatePhysics(float dt) {
   int pSeg = findSegIdx(position + playerZdist);
   int prevSegIdx = (pSeg - 1 + TOTAL_SEGS) % TOTAL_SEGS;
-
   float spPct = speed / maxSpeed;
 
-  // === GRAVITY: Slope effect (hills/dips) ===
-  float currentY = segments[pSeg].y;
-  float prevY = segments[prevSegIdx].y;
-  float slope = (currentY - prevY) / SEG_LEN;  // Terrain slope
-
-  // Going up = slower, going down = faster
-  float gravityEffect = -slope * GRAVITY_FACTOR;
-  acceleration += gravityEffect * dt;
-
   // === ACCELERATION WITH FRICTION ===
-  // Air and ground friction
-  float friction = FRICTION;
-  speed *= friction;
-
-  // Apply acceleration to speed
+  speed *= perFrame(FRICTION, dt);
   speed += acceleration * dt;
 
-  // Limit speed
+  // === GRAVITY: slope effect (hills/dips) ===
+  // Acts on the speed. It used to be added to `acceleration` (the throttle
+  // state) every frame, so a long climb drained the throttle below zero and
+  // the car crawled to a stop on every big hill.
+  float slope = (segments[pSeg].y - segments[prevSegIdx].y) / SEG_LEN;
+  speed -= slope * GRAVITY_FACTOR * dt;
+
+  // Grass slows the car down (it used to be free until |x| > 2.4)
+  float off = fabsf(playerX) - 1.05f;
+  offRoad = clampF(off * 4.0f, 0, 1);
+  if (offRoad > 0 && speed > maxSpeed * 0.35f) speed *= perFrame(0.985f, dt);
+
   if (speed > maxSpeed) speed = maxSpeed;
   if (speed < 0) speed = 0;
 
-  // === DRIFT: Lateral physics in curves ===
+  // === DRIFT: lateral physics in curves ===
   float curveForce = segments[pSeg].curve * centrifugal * spPct;
-
-  // Lateral velocity increases with curve force
   velocityX += curveForce * dt * CURVE_FORCE;
-
-  // Lateral friction (car tries to return to center)
-  velocityX *= LATERAL_FRICTION;
-
-  // Apply lateral velocity to position
+  velocityX *= perFrame(LATERAL_FRICTION, dt);
   playerX -= velocityX * dt;
 
-  // Also apply curve push (centrifugal)
   float steerDx = dt * CENTRIFUGAL_DX * spPct;
   playerX -= steerDx * spPct * segments[pSeg].curve * centrifugal;
 
   // === VISUAL DRIFT ANGLE ===
-  // Calculate angle based on lateral velocity and forward speed
   if (speed > 0.1f) {
     driftAngle = atan2f(velocityX * 10.0f, speed / maxSpeed) * 0.5f;
     driftAngle = clampF(driftAngle, -0.5f, 0.5f);
   } else {
-    driftAngle *= 0.9f;  // Gradually reduce angle
+    driftAngle *= perFrame(0.9f, dt);
   }
 
   prevPosition = position;
   position = loopIncrease(position, dt * speed, trackLength);
 
   // Detect lap completion
-  if (position < prevPosition && prevPosition > trackLength * 0.9) {
-    if (currentLapTime > 5.0) {
+  if (position < prevPosition && prevPosition > trackLength * 0.9f) {
+    if (currentLapTime > 5.0f) {
       lastLapTime = currentLapTime;
       if (bestLapTime <= 0 || currentLapTime < bestLapTime)
         bestLapTime = currentLapTime;
-
-      // Advance to next lap
-      if (currentLap < totalLaps) {
-        currentLap++;
-      } else {
-        // Race finished! Reset
-        currentLap = 1;
-      }
+      currentLap = (currentLap < totalLaps) ? currentLap + 1 : 1;
     }
     currentLapTime = 0;
   }
   currentLapTime += dt;
 
-  // Update traffic
+  // === TRAFFIC: keep lanes, change lane now and then, ease across ===
   for (int i = 0; i < MAX_CARS; i++) {
-    trafficCars[i].z = loopIncrease(trafficCars[i].z, dt * trafficCars[i].speed, trackLength);
-    if (random(0, 200) < 2) {
-      trafficCars[i].offset += (random(-1, 2)) * 0.1;
-      trafficCars[i].offset  = clampF(trafficCars[i].offset, -0.8, 0.8);
+    TrafficCar& c = trafficCars[i];
+    c.z = loopIncrease(c.z, dt * c.speed, trackLength);
+    if (random(0, 1000) < (int)(4 * dt * 60)) {
+      int lane = random(0, LANES);
+      c.targetOffset = (lane - 1) * (2.0f / LANES);
     }
+    c.offset += (c.targetOffset - c.offset) * clampF(dt * 1.2f, 0, 1);
   }
 }
 
+static void crash() {
+  crashed = true;
+  crashTimer = millis();
+}
+
 void checkCollisions() {
-  const float playerW = 0.15;
+  const float playerW = 0.30f;
   int pSeg = findSegIdx(position + playerZdist);
   Segment& s = segments[pSeg];
 
-  // Collisions with traffic
+  // Traffic: compare positions along the track (with wrap) instead of
+  // segment indices, which missed hits across the lap line.
+  float playerZ = position + playerZdist;
   for (int i = 0; i < MAX_CARS; i++) {
-    int cs = findSegIdx(trafficCars[i].z);
-    int d  = abs(cs - pSeg);
-    if (d > 3 && d < TOTAL_SEGS - 3) continue;
-    if (speed > trafficCars[i].speed && overlapChk(playerX, playerW, trafficCars[i].offset, 0.15)) {
-      speed = trafficCars[i].speed * 0.7;
-      position = loopIncrease(position, -(speed * 0.05), trackLength);
-      if (speed > maxSpeed * 0.5) {
-        crashed = true;
-        crashTimer = millis();
-      }
+    TrafficCar& c = trafficCars[i];
+    float dz = c.z - playerZ;
+    if (dz >  trackLength * 0.5f) dz -= trackLength;
+    if (dz < -trackLength * 0.5f) dz += trackLength;
+    if (dz < -SEG_LEN * 0.5f || dz > SEG_LEN * 1.5f) continue;
+    if (speed > c.speed && overlapChk(playerX, playerW, c.offset, 0.30f)) {
+      float before = speed;
+      speed = c.speed * 0.7f;
+      position = loopIncrease(position, -(speed * 0.05f), trackLength);
+      if (before > maxSpeed * 0.5f) crash();
     }
   }
 
-  // Collisions with tunnel walls
+  // Tunnel walls
   if (s.tunnel) {
     const float wallX = 0.95f;
     if (playerX < -wallX || playerX > wallX) {
       playerX = clampF(playerX, -wallX, wallX);
       velocityX = 0.0f;
+      if (speed > maxSpeed * 0.35f) crash();
       speed *= 0.3f;
-      if (speed > maxSpeed * 0.35f) {
-        crashed = true;
-        crashTimer = millis();
-      }
     }
   }
 
-  // Collisions with sprites
-  if (playerX < -1.0 || playerX > 1.0) {
-    if (s.spriteType >= 0 && overlapChk(playerX, playerW, s.spriteOffset, 0.4)) {
-      speed *= 0.2;
-      if (speed > maxSpeed * 0.25) {
-        crashed = true;
-        crashTimer = millis();
-      }
+  // Scenery sprites (only reachable off the road)
+  if (playerX < -1.0f || playerX > 1.0f) {
+    float off = s.spriteOffset();
+    if (s.spriteType >= 0 && s.spriteType != SPR_BUSH && overlapChk(playerX, playerW, off, 0.4f)) {
+      if (speed > maxSpeed * 0.25f) crash();
+      speed *= 0.2f;
     }
   }
 
   // Going completely off the road
-  if (playerX <= -2.4 || playerX >= 2.4) {
-    speed *= 0.5;
-    if (speed > maxSpeed * 0.4) {
-      crashed = true;
-      crashTimer = millis();
-    }
+  if (playerX <= -2.4f || playerX >= 2.4f) {
+    if (speed > maxSpeed * 0.8f) crash();   // same threshold as before (0.4 after halving)
+    speed *= 0.5f;
   }
 }

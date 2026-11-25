@@ -7,12 +7,8 @@
 #ifndef RENDER_HUD_H
 #define RENDER_HUD_H
 
-#include <Arduino.h>
-
-// Draws the complete HUD (lap counter, times, speedometer)
-void drawHUD(float speed, float maxSpeed, float currentLapTime, float bestLapTime);
-
-// Draws the circular speedometer
-void drawSpeedometer(float speed, float maxSpeed);
+// fps: game frames per second, lcdFps: frames actually shown on the panel,
+// frameMs: CPU time spent producing the last frame.
+void drawHUD(float timeSec, float fps, float lcdFps, float frameMs);
 
 #endif // RENDER_HUD_H

@@ -7,6 +7,8 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
+#include "input.h"
+
 // ═══════════════════════════════════════════════════════════════
 //  GLOBAL PHYSICS VARIABLES
 // ═══════════════════════════════════════════════════════════════
@@ -27,25 +29,20 @@ extern float prevPosition;
 extern int currentLap;
 extern int totalLaps;
 
-// Advanced physics variables
 extern float velocityX;        // Lateral velocity (for drift)
 extern float acceleration;     // Current acceleration
-extern float driftAngle;       // Drift angle
+extern float driftAngle;       // Drift angle (visual)
+extern float steerVisual;      // Smoothed steering for the car's yaw (-1..1)
+extern bool  braking;
+extern bool  autopilot;        // true while the demo driver is in control
+extern float offRoad;          // 0 on tarmac .. 1 on grass (visual shake)
 
 // ═══════════════════════════════════════════════════════════════
 //  PHYSICS FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
-
-// Initialize physics variables
 void initPhysics();
-
-// Handle player input (demo autopilot mode)
-void handleInput(float dt);
-
-// Update game physics
+void handleInput(float dt, const InputState& in);
 void updatePhysics(float dt);
-
-// Check collisions
 void checkCollisions();
 
 #endif // PHYSICS_H

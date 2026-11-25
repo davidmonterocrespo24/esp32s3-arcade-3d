@@ -1,119 +1,128 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  TRAFFIC CAR RENDERING IMPLEMENTATION
+  BUILDING RENDERING IMPLEMENTATION
+  Faces are shaded from the palette's sun direction, windows reflect
+  the sky by day and light up at night, and everything fades into the
+  horizon haze (the old buildings had no fog and popped in at full
+  colour at the end of the draw distance).
   ═══════════════════════════════════════════════════════════════
 */
 
-#include "render_traffic.h"
+#pragma GCC optimize("O2")
+
+#include "render_building.h"
 #include "rendering.h"
-#include "config.h"
-#include "colors.h"
+#include "utils.h"
+#include <math.h>
 
-void drawBuilding(RenderPt& p0, RenderPt& p1, int heightVal, uint16_t baseCol, int sIdx, bool isLeft, bool showFront) {
-  int h1 = (int)(p1.scale * heightVal);
-  int h0 = (int)(p0.scale * heightVal);
-  // Building width MUCH WIDER (400000)
-  int bw1 = (int)(p1.scale * BUILDING_W);
-  int bw0 = (int)(p0.scale * BUILDING_W);
+static inline uint16_t fogC(uint16_t c, float fog) {
+  return blend565(pal.fog, c, (uint32_t)(fog * 32.0f + 0.5f));
+}
 
-  int off1 = p1.w * BUILDING_OFFSET;
-  int off0 = p0.w * BUILDING_OFFSET;
+void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t style,
+                  int sIdx, bool isLeft, bool showFront, float fog) {
+  const float H = (float)heightUnits * BUILDING_H_UNIT;
+  const int facade = style & 7;
+  const int winStyle = (style >> 3) & 3;
+  const float dir = isLeft ? -1.0f : 1.0f;
 
-  // Base coordinates (left or right side)
-  // If left: subtract offset. If right: add.
-  int x0_side = isLeft ? (p0.x - off0) : (p0.x + off0);
-  int x1_side = isLeft ? (p1.x - off1) : (p1.x + off1);
+  float sideN = pn.x + dir * pn.w * BUILDING_OFFSET;
+  float sideF = pf.x + dir * pf.w * BUILDING_OFFSET;
+  float outN  = sideN + dir * pn.scale * BUILDING_W;
+  float outF  = sideF + dir * pf.scale * BUILDING_W;
+  float gN = pn.y, gF = pf.y;
+  float hN = pn.scale * H, hF = pf.scale * H;
+  float topN = gN - hN, topF = gF - hF;
 
-  int x0_outer = isLeft ? (x0_side - bw0) : (x0_side + bw0);
-  int x1_outer = isLeft ? (x1_side - bw1) : (x1_side + bw1);
+  // Reject slices entirely off screen
+  float minX = fminF(fminF(sideN, sideF), fminF(outN, outF));
+  float maxX = fmaxF(fmaxF(sideN, sideF), fmaxF(outN, outF));
+  if (maxX < 0 || minX >= SCR_W) return;
+  if (fminF(topN, topF) >= gfx_cy1) return;
 
-  // 1. SIDE WALL (The one facing the road)
-  // Darken slightly to give volume
-  uint16_t sideCol = darkenCol(baseCol, 0.6);
-  drawQuad(x0_side, p0.y, x1_side, p1.y,
-           x1_side, p1.y - h1, x0_side, p0.y - h0, sideCol);
+  // The face towards the road is lit when the sun is on the road side of it
+  bool sunFromRight = pal.sunDirX >= 0;
+  bool sideLit = (isLeft == sunFromRight);
+  uint16_t sideCol  = fogC(sideLit ? pal.facadeLit[facade] : pal.facadeShade[facade], fog);
+  uint16_t frontCol = fogC(pal.facadeFront[facade], fog);
+  uint16_t roofCol  = fogC(pal.roof[facade], fog);
 
-  // 2. DETAILS / WINDOWS (By Style)
-  int style = sIdx % 6;
-  int numFloors = h0 / 25; // Approximate floors
+  // 1. SIDE WALL (facing the road)
+  gfx_fillQuad(sideN, gN, sideF, gF, sideF, topF, sideN, topN, sideCol);
 
-  if (numFloors > 1 && numFloors < 30) {
-     if (style == 0) { // STYLE 0: STANDARD (Offices)
-       uint16_t winCol = rgb(220, 220, 180); // Warm light
-       for (int fl = 1; fl < numFloors; fl++) {
-         float t = (float)fl / numFloors;
-         int wy0 = p0.y - (int)(h0 * t);
-         int wy1 = p1.y - (int)(h1 * t);
-         // Simple horizontal lines
-         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
-       }
-     }
-     else if (style == 1) { // STYLE 1: GLASS TOWER (Bluish)
-       uint16_t glassCol = rgb(100, 200, 255);
-       // Reflective vertical lines
-       int midX0 = (x0_side + x0_outer) / 2; // (Approx, only drawing on side face for now)
-       spr.drawLine(x0_side, p0.y - h0/2, x1_side, p1.y - h1/2, glassCol);
-       // Edge reinforcement
-       spr.drawLine(x0_side, p0.y - h0, x1_side, p1.y - h1, TFT_WHITE);
-     }
-     else if (style == 2) { // STYLE 2: RESIDENTIAL (Brick/Orange)
-       uint16_t winCol = TFT_YELLOW;
-       // Scattered square windows
-       for (int fl = 1; fl < numFloors; fl++) {
-         if ((fl + sIdx) % 2 == 0) continue; // Alternate floors
-         float t = (float)fl / numFloors;
-         int wy0 = p0.y - (int)(h0 * t);
-         int wy1 = p1.y - (int)(h1 * t);
-         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
-       }
-     }
-     else if (style == 3) { // STYLE 3: MODERN (White/Black)
-       uint16_t winCol = TFT_WHITE;
-       // Few lines, very thin (minimalist)
-       if (numFloors > 5) {
-         float t = 0.8;
-         int wy0 = p0.y - (int)(h0 * t);
-         int wy1 = p1.y - (int)(h1 * t);
-         spr.drawLine(x0_side, wy0, x1_side, wy1, winCol);
-       }
-     }
-     else if (style == 4) { // STYLE 4: INDUSTRIAL (Dark)
-        // Warning stripes or red lights
-        if (numFloors > 2) {
-           float t = 0.9; // Aerial obstruction light
-           int wy0 = p0.y - (int)(h0 * t);
-           int wy1 = p1.y - (int)(h1 * t);
-           spr.drawCircle((x0_side+x1_side)/2, (wy0+wy1)/2, 2, TFT_RED);
-        }
-     }
-     else if (style == 5) { // STYLE 5: NIGHT / NEON
-        uint16_t neonCol = (sIdx % 2 == 0) ? rgb(255, 0, 255) : rgb(0, 255, 255);
-        // Vertical neon edge
-        spr.drawLine(x0_side, p0.y, x0_side, p0.y - h0, neonCol);
-     }
+  // 2. WINDOWS on the side wall (LOD: only when a floor is >= 3 px tall)
+  float floorPx = pn.scale * BUILDING_FLOOR_H;
+  int floors = (int)(H / BUILDING_FLOOR_H);
+  float night = pal.night;
+  uint16_t dayWin = lerpCol(darkenCol(pal.windowDay, 0.8f), sideCol, 0.12f + 0.08f * (sIdx & 1));
+  uint16_t litWin = pal.windowLit;
+  uint16_t darkWin = darkenCol(sideCol, 0.45f);
+  if (floorPx >= 4.0f && floors > 1) {
+    float t0 = 0.14f, t1 = 0.86f;
+    if (winStyle == 1) { t0 = 0.0f; t1 = 1.0f; }          // ribbon windows
+    float xa = lerpF(sideN, sideF, t0), xb = lerpF(sideN, sideF, t1);
+    float ga = lerpF(gN, gF, t0), gb = lerpF(gN, gF, t1);
+    float sa = lerpF(pn.scale, pf.scale, t0), sb = lerpF(pn.scale, pf.scale, t1);
+    for (int f = 0; f < floors; f++) {
+      float hb = (f + 0.22f) * BUILDING_FLOOR_H, ht = (f + 0.82f) * BUILDING_FLOOR_H;
+      if (winStyle == 2) { hb = (f + 0.92f) * BUILDING_FLOOR_H; ht = (f + 1.0f) * BUILDING_FLOOR_H; }
+      float yab = ga - sa * hb, ybb = gb - sb * hb;
+      float yat = ga - sa * ht, ybt = gb - sb * ht;
+      if (fmaxF(yab, ybb) < 0) break;                      // above the screen
+      if (fminF(yat, ybt) >= gfx_cy1) continue;            // hidden below
+      uint32_t h = hash32((uint32_t)sIdx * 73u + (uint32_t)f * 7919u + (isLeft ? 1u : 0u));
+      if (winStyle == 3 && (h & 1)) continue;              // sparse
+      uint16_t wc;
+      if (winStyle == 2) {
+        wc = darkenCol(sideCol, 0.7f);                      // glass tower floor lines
+      } else {
+        bool lit = (h >> 3) % 100 < 55;
+        uint16_t nightCol = lit ? litWin : darkWin;
+        wc = lerpCol(dayWin, nightCol, night);
+        wc = fogC(wc, fog * (lit ? (1.0f - 0.5f * night) : 1.0f));
+      }
+      gfx_fillQuad(xa, yab, xb, ybb, xb, ybt, xa, yat, wc);
+    }
   }
 
-  // 3. ROOF
-  int roX1 = isLeft ? (x1_outer) : (x1_side); // Far outer corners
-  int roX0 = isLeft ? (x0_outer) : (x0_side); // Near outer corners
-  // Adjust roof coords for quad
-  drawQuad(x0_side, p0.y - h0, x1_side, p1.y - h1,
-           x1_outer, p1.y - h1, x0_outer, p0.y - h0,
-           darkenCol(baseCol, 0.85));
+  // Neon trim on some towers at night
+  if (winStyle == 3 && night > 0.3f) {
+    uint16_t neon = (facade & 1) ? rgb(255, 40, 200) : rgb(40, 230, 255);
+    float w = fmaxF(1.0f, pn.scale * 1500.0f);
+    gfx_fillQuad(sideN, gN, sideN + dir * w, gN, sideN + dir * w, topN, sideN, topN,
+                 neon, GFX_ADD, (int)(24 * night * (1.0f - fog)));
+  }
 
-  // 4. FRONT FACADE (Only if visible and safe)
+  // 3. ROOF: only visible when it is below eye level
+  if (topN > topF + 0.5f)
+    gfx_fillQuad(sideN, topN, sideF, topF, outF, topF, outN, topN, roofCol);
+
+  // 4. FRONT FACADE (first slice of the building)
   if (showFront) {
-    drawQuad(x0_side, p0.y, x0_outer, p0.y,
-             x0_outer, p0.y - h0, x0_side, p0.y - h0,
-             baseCol);
-
-    // Door/entrance detail on standard facade
-    if (h0 > 15 && bw0 > 10) {
-       uint16_t doorCol = rgb(20, 20, 20);
-       int doorH = h0 / 5;
-       int doorW = bw0 / 3;
-       int doorX = isLeft ? (x0_side - bw0/2 - doorW/2) : (x0_side + bw0/2 - doorW/2);
-       spr.fillRect(doorX, p0.y - doorH, doorW, doorH, doorCol);
+    gfx_fillQuad(sideN, gN, outN, gN, outN, topN, sideN, topN, frontCol);
+    float fx0 = fminF(sideN, outN), fx1 = fmaxF(sideN, outN);
+    float fw = fx1 - fx0;
+    if (floorPx >= 3.0f && fw > 12) {
+      const int cols = 4;
+      uint16_t fDay = lerpCol(pal.windowDay, frontCol, 0.3f);
+      uint16_t fDark = darkenCol(frontCol, 0.45f);
+      for (int f = 0; f < floors; f++) {
+        float yb = gN - (f + 0.30f) * floorPx, yt = gN - (f + 0.78f) * floorPx;
+        if (yb < 0) break;
+        if (yt >= gfx_cy1) continue;
+        for (int c = 0; c < cols; c++) {
+          float xa = fx0 + fw * (c + 0.2f) / cols, xb = fx0 + fw * (c + 0.8f) / cols;
+          uint32_t h = hash32((uint32_t)sIdx * 31u + (uint32_t)f * 131u + (uint32_t)c);
+          bool lit = (h >> 3) % 100 < 55;
+          uint16_t wc = lerpCol(fDay, lit ? litWin : fDark, night);
+          gfx_fillQuad(xa, yb, xb, yb, xb, yt, xa, yt, fogC(wc, fog));
+        }
+      }
+      // Entrance
+      float dw = fw * 0.28f, dh = fminF(floorPx * 0.9f, hN * 0.3f);
+      float dx = fx0 + fw * 0.5f - dw * 0.5f;
+      uint16_t doorCol = fogC(lerpCol(rgb(25, 25, 30), litWin, night * 0.6f), fog);
+      gfx_fillQuad(dx, gN, dx + dw, gN, dx + dw, gN - dh, dx, gN - dh, doorCol);
     }
   }
 }

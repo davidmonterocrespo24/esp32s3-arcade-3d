@@ -1,6 +1,6 @@
 # ESP32 Pseudo-3D Racing Game
 
-An OutRun-style pseudo-3D racing game for the ESP32-S3 microcontroller with an ILI9341 320×240 SPI display. The same source compiles for both ESP32 hardware and Windows (via a Raylib-based emulator).
+An arcade-style pseudo-3D racing game for the ESP32-S3 microcontroller with an ILI9341 320×240 SPI display. The same source compiles for the ESP32 hardware and for the PC (a Raylib emulator and a headless renderer).
 
 ---
 
@@ -24,47 +24,60 @@ An OutRun-style pseudo-3D racing game for the ESP32-S3 microcontroller with an I
 
 ## Features
 
-- **Pseudo-3D road rendering** — segment-based back-to-front painter's algorithm, classic arcade style
-- **3D player car** — OBJ mesh (428 vertices, 312 triangles) with scanline affine texture mapping and shadow
-- **Traffic system** — 6 AI cars with independent speeds and lane positions
-- **Procedural track** — randomized curves, elevation changes, tunnels, and buildings generated at startup
-- **Dynamic scenery** — pine trees, bushes, rocks, lamp posts, and 3D buildings with window patterns
-- **Day / sunset / night cycle** — smooth color palette transitions every ~180 km of distance
-- **Atmospheric fog** — exponential density toward the horizon
-- **Physics** — acceleration, friction coast-down, centrifugal drift on curves, hill gravity effects
-- **Collision detection** — crash with 2-second recovery
-- **Lap timing** — current and best lap displayed on the HUD
-- **HUD** — circular speedometer (0–300 km/h) with needle
+- **Pseudo-3D road** — per-scanline road with anti-aliased edges, rumble strips, edge lines and lane dashes; per-scanline exponential fog
+- **Software renderer** — own RGB565 framebuffer and rasterizer (`gfx.cpp`): gap-free polygons, alpha blending, additive lights, dithered gradients, bitmap font
+- **3D cars** — OBJ mesh (428 vertices, 312 triangles), perspective-correct texture mapping, smoothed normals with Gouraud diffuse + specular + sky reflection, contact shadow, tail/brake lights
+- **Traffic** — 10 cars rendered with the same mesh (repainted), seen from their real angle, lane changes, LOD for far cars
+- **Day → sunset → night → dawn cycle** — smooth palette blending: sky gradient, sun/moon, stars, clouds, skyline windows that light up at night, street lamps, headlight beam
+- **City and countryside** — buildings with lit/shaded faces and window patterns, trees, bushes, rocks, marker posts, street lamps
+- **Tunnels** — portal façade, lit ceiling, light pools, darkness fog, exit opening
+- **Physics** — frame-rate independent acceleration, braking, coast-down, centrifugal drift, hill gravity, off-road slowdown
+- **Controls** — real steering (stick or buttons) with autopilot demo mode after 8 s idle (the autopilot avoids traffic)
+- **HUD** — translucent panels, segmented speedometer, lap/best/last times, lap progress bar, FPS counter
 
 ---
 
 ## Hardware
 
+Two boards are supported; pick one in `board.h` (`BOARD`).
+
+**Handheld console (default)** — the same unit as the [mgs_reversing](https://github.com/davidmonterocrespo24/mgs_reversing) / [sotn-decomp](https://github.com/davidmonterocrespo24/sotn-decomp) ports:
+
 | Component | Details |
 | --------- | ------- |
-| MCU | ESP32-S3, 240 MHz dual-core, 8 MB PSRAM |
-| Display | ILI9341 TFT, 320×240, 16-bit RGB565 |
-| Input | 2 pushbuttons — GPIO 17 (left), GPIO 16 (right) |
-| Backlight | GPIO 39 PWM |
-| SPI | SCK=12, MOSI=11, MISO=13, CS=10, DC=9, RST=8 |
+| MCU | Seeed XIAO ESP32S3 Sense, 240 MHz dual-core, 8 MB octal PSRAM |
+| Display | ILI9341 320×240 SPI @ 40 MHz — SCK=7, MOSI=9, CS=4, DC=43, RST=5 |
+| Input | Analog stick X (GPIO1) steers, D5 (GPIO6) brakes, D7 (GPIO44) / ladder START starts |
 
-Compiling for hardware: open in **Arduino IDE**, select **ESP32-S3 Dev Module**, install the **TFT_eSPI** library, then compile and upload.
+**Original dev board** — ESP32-S3, ILI9341 on SCK=12, MOSI=11, MISO=13, CS=10, DC=9, RST=8, backlight GPIO39, buttons GPIO17 (left) / GPIO16 (right).
+
+### Building for the hardware (Arduino IDE)
+
+1. Board: **XIAO_ESP32S3** (or *ESP32S3 Dev Module* for the dev board), Arduino-ESP32 core 3.x
+2. **Tools → PSRAM → OPI PSRAM**
+3. **Tools → USB CDC On Boot → Enabled** (mandatory on the XIAO: GPIO43 is the panel's D/C line, and with CDC disabled `Serial` would take it)
+4. Compile and upload. **No TFT_eSPI library is needed**: the panel is driven with ESP-IDF's `esp_lcd` SPI + DMA.
+
+The serial monitor prints where each buffer was placed (`[mem] ...`, `gfx: ... framebuffer in internal SRAM`).
 
 ---
 
 ## Controls
 
-| Action | Hardware | Emulator |
-| ------ | -------- | -------- |
-| Steer left | GPIO 17 button | Left arrow key |
-| Steer right | GPIO 16 button | Right arrow key |
-| Throttle | Automatic (autopilot) | Automatic |
+| Action | Handheld | Dev board | Emulator |
+| ------ | -------- | --------- | -------- |
+| Steer | Stick X | GPIO 17 / 16 buttons | ← / → |
+| Brake | D5 | — | ↓ or Space |
+| Start | D7 or ladder START | both buttons | Enter |
+| Throttle | Automatic | Automatic | Automatic |
+
+With no input for 8 seconds the autopilot takes over (demo mode); touching the controls gives the car back.
 
 ---
 
-## Build — Emulator (Windows)
+## Build — PC
 
-The emulator uses [Raylib](https://www.raylib.com/) to render the display and mock the Arduino API.
+### Emulator (Windows, Raylib)
 
 ```bash
 cd emulator/
@@ -79,82 +92,78 @@ taskkill /F /IM car_game_emu.exe 2>nul
 rm -f car_game_emu.exe && make
 ```
 
+### Headless renderer (any OS with g++, no Raylib)
+
+Runs the game on a virtual 30 Hz clock and writes frames as PPM images — useful to check rendering changes without the hardware:
+
+```bash
+cd emulator/
+make headless
+./car_game_headless out 400 --cycle 2.2 300 400     # night, save frames 300 and 400
+./car_game_headless out 60 --pos 64000 60           # in front of the first tunnel
+```
+
+Options: `--cycle C` (0 day, 1 sunset, 2 night, 3 dawn), `--pos Z`, `--steer A:B:V`, `--brake A:B`, `--title`.
+
 ---
 
 ## Project Structure
 
 ```text
-car_game/
-├── car_game.ino           # Main game loop
-├── config.h               # All tunable constants
-├── structs.h              # Segment, RenderPt, TrafficCar data structures
-├── physics.cpp/.h         # Speed, drift, gravity, collisions, lap timing
-├── track.cpp/.h           # Procedural track generation
-├── render_road.cpp/.h     # Road, tunnel, buildings, fog
-├── render_player.cpp/.h   # 3D player car (OBJ + scanline texture)
-├── render_traffic.cpp/.h  # Traffic car geometry
-├── render_building.cpp/.h # 3D buildings with window styles
-├── render_hud.cpp/.h      # Speedometer and lap times
-├── colors.cpp/.h          # RGB565 palette, day/night/sunset lerp
-├── utils.cpp/.h           # easeInOut, expFog, lerpF, clampF, findSegIdx
-├── car2_mesh.h            # Generated: OBJ mesh as C static array
-├── car2_texture.h         # Generated: 128x128 RGB565 texture
-├── assets/
-│   ├── Car2.obj
-│   ├── car2.png
-│   ├── obj_to_header.py
-│   └── png_to_rgb565.py
+├── car_game.ino            # Setup, game states, main loop
+├── config.h                # Tunable constants (physics, track, cycle, buildings)
+├── board.h                 # Pin maps: XIAO handheld / original dev board
+├── platform.h              # HOT (IRAM) / allocation helpers
+├── gfx.cpp/.h              # Software framebuffer, rasterizer, font
+├── display.h               # display_init / display_present
+├── display_esp32.cpp       # ILI9341 over SPI DMA, scanout task on core 0
+├── input.h, input_esp32.cpp
+├── platform_esp32.cpp      # heap_caps allocation + logging
+├── structs.h               # Segment (16 B), TrafficCar
+├── colors.cpp/.h           # RGB565 helpers, day/sunset/night/dawn palettes
+├── track.cpp/.h            # Track, tunnels, city, scenery, traffic setup
+├── physics.cpp/.h          # Speed, drift, gravity, collisions, autopilot, laps
+├── rendering.cpp/.h        # Sky, sun/moon, stars, clouds, parallax skyline
+├── render_road.cpp/.h      # Road rows, tunnel, portal, sprites, lamps, traffic
+├── render_building.cpp/.h  # Buildings with windows
+├── render_player.cpp/.h    # Textured 3D car renderer, player, title, crash
+├── render_traffic.cpp/.h   # Traffic cars (mesh + LOD)
+├── render_hud.cpp/.h       # HUD and speedometer
+├── utils.cpp/.h
+├── car2_mesh.h             # Generated: mesh + smoothed normals
+├── car2_texture.h          # Generated: 128x128 RGB565 texture
+├── assets/                 # Car2.obj, car2.png, generators
 └── emulator/
-    ├── Arduino.h              # Mock Arduino API (millis, random, digitalRead)
-    ├── TFT_eSPI.cpp           # Maps sprite draw calls to Raylib
-    └── car_game_wrapper.cpp   # Includes ../car_game.ino as C++
+    ├── Arduino.h/.cpp      # Arduino API mock + host allocation/logging
+    ├── host_io.h/.cpp      # display/input hooks for the PC frontends
+    ├── main.cpp            # Raylib window frontend
+    ├── main_headless.cpp   # PPM frame writer frontend
+    └── car_game_wrapper.cpp
 ```
 
 ---
 
-## Key Constants (`config.h`)
+## Memory layout (ESP32-S3)
 
-| Constant | Default | Description |
-| -------- | ------- | ----------- |
-| `SPEED_MULTIPLIER` | 65.0 | Max speed (~246 km/h) |
-| `FRICTION` | 0.996 | Coast-down rate (~3.3 s from max) |
-| `CENTRIFUGAL` | — | Curve lateral drift force |
-| `GRAVITY_FACTOR` | — | Hill acceleration effect |
-| `ROAD_W` | 2000 | Road half-width in world units (~10.5 m real) |
-| `SEG_LEN` | 200 | Segment length in world units |
+| Buffer | Where | Size | Why |
+| ------ | ----- | ---- | --- |
+| Framebuffer | internal SRAM | 150 KB | every fill writes here; no cache traffic |
+| Car texture copy | internal SRAM | 32 KB | random texel reads; flash/PSRAM share the cache |
+| DMA bands ×2 | internal, DMA-capable | 2×5 KB | ping-pong SPI transfers |
+| Track | internal (.bss) | 16 KB | 1000 packed 16-byte segments |
+| Scanout snapshots ×2 | PSRAM | 2×150 KB | immutable copy for the panel, written once per frame |
+| Mesh, palettes, font | flash | ~13 KB | read-only |
 
-Building density: `BUILDING_H_MIN/MAX`, `BUILDING_SEG_MIN/MAX`, `BUILDING_GAP_MIN/MAX`.
+Hot raster loops are placed in IRAM (`HOT`), and the scanout runs on core 0 while the game runs on core 1 — the same split used in the MGS/SOTN ports.
 
 ---
 
 ## Regenerating Asset Headers
 
-If `assets/Car2.obj` or `assets/car2.png` change, regenerate the C headers:
-
 ```bash
-# OBJ mesh -> C header (requires Python 3)
+# OBJ mesh -> C header with smoothed normals (Python 3)
 python assets/obj_to_header.py assets/Car2.obj > car2_mesh.h
 
 # PNG texture -> RGB565 C header (requires Pillow)
 python assets/png_to_rgb565.py assets/car2.png > car2_texture.h
 ```
-
----
-
-## Architecture Notes
-
-**Rendering pipeline** — one back-to-front loop per frame:
-
-1. Sky (parallax background with road-curve offset)
-2. Road segments with fog, curb stripes, lane markings
-3. Tunnels and buildings (painter's order, farthest first)
-4. Traffic cars
-5. Player car — OBJ mesh, Z-sorted triangles, scanline affine texture mapping
-6. HUD overlay
-7. `spr.pushSprite(0,0)` — flip double buffer to display
-
-**Double buffering** — the full 320×240 RGB565 frame is composed in PSRAM before being pushed to the display, eliminating tearing.
-
-**World scale** — `ROAD_W = 2000` units ~= 10.5 m, so 1 unit ~= 5.25 mm.
-
-**Emulator internals** — `emulator/car_game_wrapper.cpp` `#include`s `../car_game.ino` so it compiles as C++ without modification. All Arduino API calls and TFT draw calls are transparently remapped to Raylib.

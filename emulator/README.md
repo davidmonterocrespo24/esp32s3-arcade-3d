@@ -1,66 +1,44 @@
-# ESP32 Car Game Emulator (Windows)
+# PC builds of the ESP32 Car Game
 
-This folder contains a Windows wrapper for the ESP32 Car Game, allowing you to run and debug the game on your PC using [Raylib](https://www.raylib.com/).
+The game draws into its own RGB565 software framebuffer (`../gfx.cpp`) on every
+platform, so the PC builds show exactly the pixels the ESP32 sends to the panel.
+Only the frontends differ:
 
-## Prerequisites
+| Target | Command | Needs |
+| ------ | ------- | ----- |
+| `car_game_emu.exe` | `make` | MinGW g++ + [Raylib](https://www.raylib.com/) (`RAYLIB_PATH`, default `C:/raylib`) |
+| `car_game_headless` | `make headless` | any C++17 g++ (Linux/WSL/MinGW) |
 
-1.  **MinGW / G++**: You need a C++ compiler. You can use the one bundled with Raylib or install MinGW-w64.
-2.  **Raylib**: Download and install Raylib for Windows.
-    *   Recommendation: Use the [Raylib Installer](https://github.com/raysan5/raylib/releases) which installs to `C:/raylib`.
+## Emulator controls
 
-## Configuration
+* **Left / Right**: steer
+* **Down / Space**: brake
+* **Enter**: start
+* **F12**: screenshot
 
-Open `Makefile` and check the `RAYLIB_PATH` variable.
-Default is:
-```makefile
-RAYLIB_PATH ?= C:/raylib/raylib
-```
-If you installed Raylib elsewhere, update this path or pass it when running make.
+## Headless renderer
 
-## Building
-
-Open a terminal in this `emulator/` directory and run:
-
-```cmd
-mingw32-make
-```
-(Or just `make` if you have it aliased).
-
-## Running
-
-Run the generated executable:
-```cmd
-car_game_emu.exe
+```bash
+./car_game_headless <outdir> <frames> [options] [frame numbers to save...]
 ```
 
-## Controls
+Options: `--cycle C` (0 day, 1 sunset, 2 night, 3 dawn), `--pos Z` (teleport),
+`--steer A:B:V`, `--brake A:B`, `--title` (stay on the title screen).
+Frames are written as `frame_NNNN.ppm` and the average host time per frame is
+printed at the end.
 
-*   **Left Arrow**: Steer Left (Simulates BTN_LEFT)
-*   **Right Arrow**: Steer Right (Simulates BTN_RIGHT)
+## How it works
 
-## How it Works
-
-*   `Arduino.h/cpp`: Mocks the Arduino API (`millis`, `delay`, `digitalRead`, etc.).
-*   `TFT_eSPI.h/cpp`: Mocks the TFT library using Raylib for rendering.
-*   `car_game_wrapper.cpp`: Includes the original `car_game.ino` file to compile the game logic as part of the C++ application.
-*   `main.cpp`: The Windows entry point that initializes the window and runs the game loop.
+* `Arduino.h/cpp`: Arduino API mock (`millis`, `random`, ...), plus the
+  `platform.h` allocation/logging helpers. Headless runs use a virtual clock.
+* `host_io.h/cpp`: `display_present()` copies the frame for the frontend,
+  `input_read()` returns what the frontend set.
+* `car_game_wrapper.cpp`: includes `../car_game.ino` so it compiles as C++.
+* `main.cpp` / `main_headless.cpp`: the two frontends.
 
 ## Troubleshooting
 
-## Troubleshooting
+### "g++: command not found"
 
-## Troubleshooting
-
-### "g++: command not found" or "Make: *** [main.o] Error"
-This means you are missing the C++ compiler.
-
-**Option A: The Easy Way (Installer)**
-1.  Go to [itch.io Raylib](https://raylib.itch.io/raylib) and download the **Windows Installer**.
-2.  Run it and check **"Install w64devkit (MinGW compiler)"**.
-
-**Option B: The Manual Way (w64devkit)**
-1.  Download **w64devkit** from [GitHub](https://github.com/skeeto/w64devkit/releases).
-2.  Extract it to a folder (e.g., `C:\w64devkit`).
-3.  Add `C:\w64devkit\bin` to your **System Environment Variables (PATH)**.
-4.  Restart your terminal.
-
+Install a compiler: the Raylib Windows installer can include **w64devkit**
+(MinGW), or download w64devkit from GitHub and add its `bin` folder to `PATH`.

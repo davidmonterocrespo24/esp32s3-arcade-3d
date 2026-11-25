@@ -8,10 +8,6 @@
 #include "config.h"
 #include <math.h>
 
-// ═══════════════════════════════════════════════════════════════
-//  FUNCTION IMPLEMENTATION
-// ═══════════════════════════════════════════════════════════════
-
 float clampF(float v, float lo, float hi) {
   return (v < lo) ? lo : (v > hi) ? hi : v;
 }
@@ -25,7 +21,7 @@ float easeIn(float a, float b, float t) {
 }
 
 float easeInOut(float a, float b, float t) {
-  return a + (b - a) * (-cosf(t * PI) * 0.5f + 0.5f);
+  return a + (b - a) * (-cosf(t * (float)PI) * 0.5f + 0.5f);
 }
 
 float loopIncrease(float v, float inc, float mx) {

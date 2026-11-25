@@ -10,6 +10,9 @@
 #include "structs.h"
 #include "config.h"
 
+// Sprite types stored in Segment::spriteType
+enum SpriteType { SPR_PINE = 0, SPR_TREE = 1, SPR_BUSH = 2, SPR_ROCK = 3, SPR_POST = 4 };
+
 // ═══════════════════════════════════════════════════════════════
 //  GLOBAL TRACK VARIABLES
 // ═══════════════════════════════════════════════════════════════
@@ -20,28 +23,16 @@ extern float trackLength;
 // ═══════════════════════════════════════════════════════════════
 //  TRACK FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
-
-// Get the height of the last segment
 float lastY();
-
-// Add a segment to the track
 void addSeg(float curve, float y, bool isTunnel = false);
-
-// Add a road section with curves and elevation
 void addRoad(int enter, int hold, int leave, float curve, float hillY);
-
-// Add a sprite to a specific segment
 void addSprite(int idx, int type, float off);
-
-// Build the complete track
 void buildTrack();
 
 // ═══════════════════════════════════════════════════════════════
 //  TRAFFIC MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 extern TrafficCar trafficCars[MAX_CARS];
-
-// Initialize traffic cars
 void initTraffic(float maxSpeed);
 
 #endif // TRACK_H
