@@ -216,8 +216,9 @@ bool display_init() {
 
   esp_lcd_panel_io_spi_config_t io;
   memset(&io, 0, sizeof(io));
-  io.cs_gpio_num = PIN_LCD_CS;
-  io.dc_gpio_num = PIN_LCD_DC;
+  // gpio_num_t in newer ESP-IDF, int in older: the cast compiles on both
+  io.cs_gpio_num = (gpio_num_t)PIN_LCD_CS;
+  io.dc_gpio_num = (gpio_num_t)PIN_LCD_DC;
   io.spi_mode = 0;
   io.pclk_hz = LCD_SPI_HZ;
   io.trans_queue_depth = 8;

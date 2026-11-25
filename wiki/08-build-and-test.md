@@ -2,7 +2,7 @@
 
 ## 8.1 Hardware build (Arduino IDE)
 
-1. Arduino-ESP32 core **3.x** (uses ESP-IDF 5 `esp_lcd`).
+1. Arduino-ESP32 core **4.0.0** (compile-verified; 3.x should work too but was not tested).
 2. Board **XIAO_ESP32S3** (handheld) or **ESP32S3 Dev Module** (dev board).
    Select the pin map with `BOARD` in `board.h`.
 3. **Tools → PSRAM → OPI PSRAM**.
@@ -36,14 +36,14 @@ reproducible.
 | Driving sequence: acceleration, overtaking, lap completion, best/last lap | verified in a 900-frame run (lap ≈ 24.7 s, top ≈ 250–270 km/h) |
 | Mesh generator output | vertices and indices identical to the old header; normals added |
 | Raylib frontend (`emulator/main.cpp`) | compiles against the raylib 5.0 headers (`-fsyntax-only`); not run, Raylib is not installed on the dev machine |
+| ESP32 build, XIAO handheld (`esp32:esp32:XIAO_ESP32S3:PSRAM=opi`, core 4.0.0) | compiles, no warnings: 407,937 B flash (12 %), 69,728 B static RAM (21 %), 257,952 B left for the heap |
+| ESP32 build, dev board (`esp32:esp32:esp32s3:PSRAM=opi`, `-DBOARD=2`) | compiles: 437,157 B flash, 70,176 B static RAM |
 
 ## 8.4 Not verified yet
 
-- **The ESP32 build has not been compiled yet.** The Arduino-ESP32 toolchain
-  could not be installed on the development machine in time (the board
-  index download was timing out). The code to watch is `display_esp32.cpp`,
-  `input_esp32.cpp` and `platform_esp32.cpp` (ESP-IDF structs are filled field
-  by field to stay compatible across IDF versions).
+- The first ESP32 compile found one error, fixed: in newer ESP-IDF the
+  `esp_lcd` SPI config uses `gpio_num_t` for `cs_gpio_num`/`dc_gpio_num`
+  (explicit cast, still valid on older IDF). Core 3.x was not compiled.
 - **Nothing has run on the hardware yet**: ILI9341 init, `MADCTL` orientation,
   the DMA pipeline and real frame times must be checked on the device.
 - Performance: on the PC a frame costs roughly 0.5–2 ms (noisy, WSL). The S3 is
@@ -63,7 +63,8 @@ reproducible.
 
 ## 8.6 Next steps
 
-1. Compile and flash; adjust `LCD_MADCTL` if needed; read the HUD numbers.
+1. Flash; adjust `LCD_MADCTL` if needed; read the HUD numbers and the `[mem]` log
+   (the 150 KB framebuffer must land in internal SRAM; ~258 KB are free after statics).
 2. If the CPU is the bottleneck: lower `DRAW_DIST`, raise the traffic LOD
    threshold, or skip window quads earlier.
 3. Port the AI competitors from `origin/other_cars` (`927201f`) onto the new

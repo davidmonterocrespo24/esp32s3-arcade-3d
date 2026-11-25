@@ -59,5 +59,5 @@ framebuffer as the ESP32, so these are the pixels the panel receives.*
 | --- | --- |
 | PC headless build + rendering | Verified (screenshots above) |
 | Raylib emulator frontend | Compiles against raylib 5.0 headers (not run: no Raylib on the dev machine) |
-| ESP32 build (Arduino-ESP32 3.x) | **Not yet compiled** — see [build status](08-build-and-test.md) |
+| ESP32 build | Compiles with Arduino-ESP32 **4.0.0** for the XIAO handheld and the dev board — see [build status](08-build-and-test.md) |
 | On-device run, real frame times | **Not yet tested on hardware** |

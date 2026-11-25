@@ -22,7 +22,7 @@ rm -f car_game_emu.exe && make
 `./car_game_headless <outdir> <frames> [--cycle C] [--pos Z] [--steer A:B:V] [frames to save...]`
 writes PPM frames. Use it to check rendering changes visually.
 
-**Hardware target:** ESP32-S3 + ILI9341 320×240 SPI, Arduino IDE, Arduino-ESP32 core 3.x.
+**Hardware target:** ESP32-S3 + ILI9341 320×240 SPI, Arduino IDE, Arduino-ESP32 core 4.0.0 (compile-verified).
 Tools → PSRAM: OPI PSRAM, Tools → USB CDC On Boot: Enabled. Board/pins in `board.h`
 (default: XIAO ESP32S3 Sense handheld, same unit as the mgs_reversing / sotn-decomp ports).
 No TFT_eSPI: the panel is driven with ESP-IDF `esp_lcd` SPI + DMA.
