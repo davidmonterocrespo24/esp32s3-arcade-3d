@@ -636,6 +636,7 @@ static void think(int i, float dt, AiCmd& out) {
   out.vTarget = vWant;
   out.vTraffic = vTraffic;
   out.brake = v > vWant + AI_CORNER_TOL || v > vTraffic + 220.0f;
+  if (out.brake) { turbo = false; D.boostT = 0.0f; }      // never boost into a braking zone
   out.turbo = turbo;
 }
 
