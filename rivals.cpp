@@ -625,9 +625,9 @@ static void think(int i, float dt, AiCmd& out) {
   if (dbg == -2) { const char* e = getenv("AI_DEBUG"); dbg = e ? atoi(e) : -1; }
   if (dbg == i)
     printf("AI %d t=%.2f z=%.0f x=%.3f v=%.0f vTop=%.0f vWant=%.0f vTraf=%.0f mode=%d oth=%d fol=%d blk=%d "
-           "tx=%.3f lo=%.3f hi=%.3f acc=%.0f xv=%.3f turbo=%d draft=%.2f\n",
+           "tx=%.3f lo=%.3f hi=%.3f acc=%.0f xv=%.3f turbo=%d draft=%.2f wide=%.1f lift=%.1f\n",
            i, raceTime, me.z, me.x, v, vTop, vWant, vTraffic, D.mode, D.other, follow, block, tx, lo, hi,
-           D.accel, D.xVel, (int)turbo, D.draft);
+           D.accel, D.xVel, (int)turbo, D.draft, D.wideT, D.liftT);
 #endif
   // Corners work like for a human (the throttle is automatic): brake only
   // when clearly over the corner speed. Traffic: ease off, brake if needed.

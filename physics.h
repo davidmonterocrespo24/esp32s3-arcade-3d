@@ -46,9 +46,11 @@
 #define ROCKET_TIME        0.45f   // ...and a free boost: ~+110 u/s^2 of throttle, worth
                                    // ~2.5 car lengths by top speed (1 s = ~10 car lengths)
 #define BUMP_REST          0.30f   // restitution of nose-to-tail bumps
+#define BUMP_PUSH          0.50f   // share of the bump impulse the car in front receives
 #define BUMP_CRASH         0.50f   // closing speed (fraction of maxSpeed) that crashes the player
 #define SIDE_KICK          0.35f   // lateral bounce of a side contact (half-widths / s)
 #define SIDE_RUB_KEEP      0.996f  // speed kept per 60 Hz frame of side contact (~1 % a bump)
+#define RIVAL_EDGE_X       1.08f   // a shoved rival stops on the rumble strip (never in the scenery)
 #define DRAFT_BOOST        0.035f  // slipstream: top speed +3.5 % right behind a car...
 #define DRAFT_RANGE        2750.0f // ...fading to 0 at this bumper gap (2.5 car lengths)
 #define DRAFT_WIDTH        0.30f   // |dx| below this is "behind" it

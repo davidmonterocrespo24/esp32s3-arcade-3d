@@ -311,15 +311,18 @@ static void playerWalls(float dt, bool allowCrash) {
   }
 }
 
-// Same limits for a rival (pushed there by a bump): it scrapes, never crashes
+// Same limits for a rival (pushed there by a bump): it scrapes, never
+// crashes. Rivals do not look at the roadside scenery, so they also hold
+// their ground at the rumble strip instead of being shoved into the trees.
 static void rivalWalls(int i, float dt) {
   Racer& R = racers[i];
   for (int side = 0; side < 2; side++) {
-    float maxX = physics_maxX(R.z, side);
+    const float wall = physics_maxX(R.z, side);
+    const float maxX = fminF(wall, RIVAL_EDGE_X);
     float xs = side ? R.x : -R.x;
     if (xs <= maxX) continue;
     R.x = side ? maxX : -maxX;
-    R.speed *= perFrame(0.975f, dt);
+    if (xs > wall) R.speed *= perFrame(0.975f, dt);   // scraping a wall / rail
     float v = ai_latVel(i);
     if ((side && v > 0) || (!side && v < 0)) ai_kickLatVel(i, -v);   // stop moving into it
   }
@@ -440,7 +443,7 @@ static void pairContact(int ia, int ib, float dt) {
       // car gets a smaller push (part of the energy goes into the bump)
       const float J = closing * (1.0f + BUMP_REST) * 0.5f;
       rear.speed = fmaxF(0.0f, rear.speed - J) * 0.99f;
-      front.speed += J * 0.75f;
+      front.speed += J * BUMP_PUSH;
     }
     rear.z  -= oz * 0.6f + 1.0f;
     front.z += oz * 0.4f;
@@ -466,8 +469,9 @@ void physics_resolveContacts(float dt) {
     for (int a = 0; a < NUM_RACERS; a++)
       for (int b = a + 1; b < NUM_RACERS; b++) pairContact(a, b, pass == 0 ? dt : 0.0f);
     // a push may have shoved somebody into a wall: same limits for all
-    for (int i = 1; i < NUM_RACERS; i++) rivalWalls(i, dt);
-    if (!crashed) playerWalls(dt, false);
+    // (the scrape costs speed once per frame)
+    for (int i = 1; i < NUM_RACERS; i++) rivalWalls(i, pass == 0 ? dt : 0.0f);
+    if (!crashed) playerWalls(pass == 0 ? dt : 0.0f, false);
   }
 }
 
