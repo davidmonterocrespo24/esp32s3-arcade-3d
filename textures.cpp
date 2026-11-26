@@ -37,7 +37,7 @@ static const WallDef WALL_DEFS[WT_COUNT] = {
   { 5, 16, 32, 0, 4 },    // CLIFF
   { 5, 16, 16, 16, 4 },   // WALL
   { 4, 16, 32, 16, 4 },   // TUNNEL
-  { 4, 0, 16, 0, 2 },     // ROOF
+  { 0, 0, 8, 0, 2 },      // ROOF: colour variants only (roofs are drawn as tile courses)
 };
 struct RowDef { uint8_t wLog2, hLog2; };
 static const RowDef ROW_DEFS[RT_COUNT] = {

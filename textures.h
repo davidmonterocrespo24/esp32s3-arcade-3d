@@ -81,7 +81,8 @@ enum WallTexId : uint8_t {
   WT_CLIFF,         // layered rock (no floors)
   WT_WALL,          // concrete retaining-wall panels
   WT_TUNNEL,        // tunnel lining: tiles, stripe, skirting
-  WT_ROOF,          // terracotta roof tiles (villas)
+  WT_ROOF,          // terracotta for villa roofs: colour variants only (the
+                    // roof is drawn as shaded tile courses, not sampled)
   WT_COUNT };
 
 enum RowTexId : uint8_t {

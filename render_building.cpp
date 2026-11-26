@@ -30,10 +30,6 @@
 #include <math.h>
 #include <string.h>
 
-static inline uint16_t fogC(uint16_t c, float fog) {
-  return blend565(pal.fog, c, (uint32_t)(fog * 32.0f + 0.5f));
-}
-
 // ═══════════════════════════════════════════════════════════════
 //  STYLE -> LOOK
 // ═══════════════════════════════════════════════════════════════
@@ -365,8 +361,8 @@ static void flatRoof(const RoofFrame& R, const TexColors& C, int sIdx, bool isLe
   gfx_fillQuad(x0, y0, x3, y3, u0, v0, u1, v1, P[TS_BASE]);
 }
 
-static void pitchedRoof(const RoofFrame& R, const Look& L, uint8_t style, float fog, bool showFront,
-                        float ridgePS, const uint16_t* frontPal) {
+static void pitchedRoof(const RoofFrame& R, uint8_t style, float fog, bool showFront, float ridgePS,
+                        const uint16_t* frontPal) {
   const int f32 = (int)(fog * 32.0f + 0.5f);
   uint16_t P[TS_COUNT];
   tex_buildPalette(P, tex_colors(WT_ROOF, (bldVariant(style) >> 2) & 3), TF_ROOF, pal.fog, f32);
@@ -399,7 +395,6 @@ static void pitchedRoof(const RoofFrame& R, const Look& L, uint8_t style, float 
     gfx_fillQuad(gx0, gy0, gx2, gy2, gx2, gy2 + e, gx0, gy0 + e, P[TS_SHADE]);
     gfx_fillQuad(gx1, gy1, gx2, gy2, gx2, gy2 + e, gx1, gy1 + e, P[TS_SHADE]);
   }
-  (void)L;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -483,7 +478,7 @@ void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t s
   RoofFrame RF = { sideN, sideF, outN, outF, topN, topF, pn.scale, pf.scale };
   if (L.roof == ROOF_PITCHED) {
     const PalSet& FP = palettes(isLeft ? 2 : 3, L, style, TF_FRONT, fog32);
-    pitchedRoof(RF, L, style, fog, showFront, ridgePS, FP.pal);
+    pitchedRoof(RF, style, fog, showFront, ridgePS, FP.pal);
   } else if (topN > topF + 0.5f) {
     if (L.roof == ROOF_FLAT) {
       flatRoof(RF, tex_colors(L.tex, L.colors), sIdx, isLeft, fog, showFront, floorPS);
