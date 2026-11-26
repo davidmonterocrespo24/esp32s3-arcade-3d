@@ -46,4 +46,17 @@ void  plat_report_memory(const char* tag);
 bool  plat_save(const void* data, size_t n);
 bool  plat_load(void* data, size_t n);
 
+// ---- additions (UI phase) ----
+// Once-per-second health line on the serial port (ESP32 only):
+//   [st] fps, frame ms, LCD fps | internal free / largest / minimum ever |
+//   PSRAM free | stack high-water of the loop task and of lcd_scan
+// Set to 0 to silence it.
+#ifndef PLAT_STATUS_LOG
+#define PLAT_STATUS_LOG 1
+#endif
+// Early platform setup: logs every failed heap allocation (ESP32).
+void  plat_init();
+// Call once per second from the game loop (prints only if PLAT_STATUS_LOG).
+void  plat_status(float fps, float frameMs, float lcdFps);
+
 #endif // PLATFORM_H

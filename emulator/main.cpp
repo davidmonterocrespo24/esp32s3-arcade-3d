@@ -2,8 +2,9 @@
 // framebuffer it presents, scaled x3. The game draws into exactly the same
 // software framebuffer as on the ESP32, so what you see here is pixel-exact.
 //
-// Keys: LEFT/RIGHT steer, UP/DOWN menus, SPACE or DOWN brake, X or LEFT SHIFT
-// turbo, ENTER confirm / pause, ESC or BACKSPACE back, F12 screenshot.
+// Keys: LEFT/RIGHT steer (and change values / circuits in menus), UP/DOWN
+// menus, SPACE or DOWN brake, X or LEFT SHIFT turbo, ENTER confirm / pause,
+// P pause / resume, ESC or BACKSPACE back, F12 screenshot.
 // Close the window to quit (ESC is "back" in the game).
 
 #include <string>
@@ -46,10 +47,10 @@ int main(int argc, char** argv) {
     if (IsKeyDown(KEY_DOWN))  in.stickY += 1.0f;
     in.brake = IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_SPACE);
     in.turbo = IsKeyDown(KEY_X) || IsKeyDown(KEY_LEFT_SHIFT);
-    in.start = IsKeyDown(KEY_ENTER) || IsKeyDown(KEY_KP_ENTER);
-    in.confirm = in.start;
+    in.confirm = IsKeyDown(KEY_ENTER) || IsKeyDown(KEY_KP_ENTER);
+    in.start = in.confirm || IsKeyDown(KEY_P);    // P pauses / resumes without confirming
     in.back = IsKeyDown(KEY_ESCAPE) || IsKeyDown(KEY_BACKSPACE);
-    in.any = in.steer != 0 || in.stickY != 0 || in.brake || in.turbo || in.start || in.back;
+    in.any = in.steer != 0 || in.stickY != 0 || in.brake || in.turbo || in.start || in.confirm || in.back;
     g_hostInput = in;
 
     loop();

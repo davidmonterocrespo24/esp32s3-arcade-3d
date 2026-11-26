@@ -39,10 +39,22 @@ struct GameDebug {
   float cycle;
   float teleportZ;     // --pos: >= 0 teleports the camera here right after GO
   bool  noCountdown;   // --nocd: GO at once
+  bool  devkitNav;     // --devkit: menus as on the two-button dev board (added in the UI phase)
 };
 extern GameDebug gameDebug;
 
 void game_debugStartRace(int circuit);   // --race C: straight to the grid + countdown
 void game_debugStartGP();                // --gp: a Grand Prix from the first circuit
+
+// ---- additions (UI phase) ----
+// --state NAME[:C]: jump straight to a screen (TITLE, DEMO, MENU, SELECT,
+// COUNTDOWN, RACE, PAUSE, FINISH, RESULTS, STANDINGS, CHAMPION) on circuit C.
+// Screens that need race data (FINISH .. CHAMPION) fast-forward the races
+// with the autopilot, without rendering. Returns false for an unknown name.
+bool game_debugJump(const char* stateName, int circuit);
+// Records beaten by the last finished race: bit 0 lap, bit 1 race time
+int  game_recordFlags();
+// The pending screen transition is fading out (input is ignored)
+bool game_inTransition();
 
 #endif // GAME_H

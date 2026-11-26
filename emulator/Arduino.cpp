@@ -65,6 +65,8 @@ void plat_log(const char* fmt, ...) {
 }
 
 void plat_report_memory(const char*) {}
+void plat_init() {}
+void plat_status(float, float, float) {}
 
 bool        g_emuSaveEnabled = true;
 std::string g_emuSavePath = "car_game_save.bin";

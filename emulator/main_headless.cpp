@@ -19,12 +19,20 @@
 //   --save          enable save data (car_game_save.bin in the current folder)
 //   --segs F        at frame F print the 40 segments ahead of the camera
 //   --steer A:B:V / --brake A:B   (older forms of --in)
+//   --state NAME[:C] jump straight to a screen before frame 0: TITLE, DEMO,
+//                   MENU, SELECT, COUNTDOWN, RACE, PAUSE, FINISH, RESULTS,
+//                   STANDINGS, CHAMPION, on circuit C (default 0; for
+//                   STANDINGS the GP race 0..2). FINISH..CHAMPION fast-forward
+//                   the race(s) with the autopilot first, without rendering.
+//   --devkit        menus react like on the two-button dev board: a single
+//                   L / R moves on release, confirm (both buttons) never moves
 //
-// Without --race / --gp / --title the harness walks title -> menu ->
-// QUICK RACE -> circuit 0 with scripted presses (frames 30, 50, 60, 80).
+// Without --race / --gp / --title / --state the harness walks title -> menu
+// -> QUICK RACE -> circuit 0 with scripted presses (frames 30, 50, 60, 80).
 // With --gp it presses confirm every 45 frames on the results / standings
 // screens so the whole Grand Prix runs.
 
+#include <cctype>
 #include <chrono>
 #include <string>
 #include <set>
@@ -148,6 +156,8 @@ int main(int argc, char** argv) {
   segsAt = -1;
   float cycle = -1, pos = -1;
   bool title = false, gp = false, autoDrive = false, nocd = false;
+  std::string jumpState;
+  int jumpCircuit = 0;
   std::vector<InSpec> inputs;
   std::set<int> shots;
   for (int i = 3; i < argc; i++) {
@@ -164,7 +174,14 @@ int main(int argc, char** argv) {
     else if (a == "--auto") autoDrive = true;
     else if (a == "--nocd") nocd = true;
     else if (a == "--save") g_emuSaveEnabled = true;
-    else if (a == "--in" && i + 1 < argc) {
+    else if (a == "--devkit") gameDebug.devkitNav = true;
+    else if (a == "--state" && i + 1 < argc) {
+      std::string v = argv[++i];
+      size_t c = v.find(':');
+      jumpState = v.substr(0, c);
+      for (auto& ch : jumpState) ch = (char)toupper((unsigned char)ch);
+      if (c != std::string::npos) jumpCircuit = atoi(v.c_str() + c + 1);
+    } else if (a == "--in" && i + 1 < argc) {
       InSpec s;
       if (parseSpec(argv[++i], s)) inputs.push_back(s);
     } else if (a == "--steer" && i + 1 < argc) {
@@ -188,7 +205,13 @@ int main(int argc, char** argv) {
   setup();
   if (diff >= 0) difficulty = diff < 0 ? 0 : (diff > 2 ? 2 : diff);
   if (cycle >= 0) setDayCycle(cycle);
-  if (raceC >= 0) game_debugStartRace(raceC);
+  if (!jumpState.empty()) {
+    if (!game_debugJump(jumpState.c_str(), jumpCircuit)) {
+      fprintf(stderr, "unknown state %s\n", jumpState.c_str());
+      return 1;
+    }
+    printf("jumped to %s (circuit %d)\n", game_stateName(game_state()), jumpCircuit);
+  } else if (raceC >= 0) game_debugStartRace(raceC);
   else if (gp) game_debugStartGP();
   else if (!title) {
     // walk title -> menu -> QUICK RACE -> circuit 0

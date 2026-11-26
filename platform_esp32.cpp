@@ -55,4 +55,37 @@ bool plat_load(void* data, size_t n) {
   return ok;
 }
 
+// ---- Failed allocations and the once-per-second status line ----
+// The callback can run in any task: it only formats into a small stack
+// buffer and prints (the USB CDC TX timeout is 0, so it never blocks).
+static void failedAlloc(size_t size, uint32_t caps, const char* fn) {
+  char buf[96];
+  snprintf(buf, sizeof(buf), "[mem] ALLOC FAILED %u B caps 0x%x in %s\n", (unsigned)size, (unsigned)caps,
+           fn ? fn : "?");
+  Serial.print(buf);
+}
+
+void plat_init() {
+  heap_caps_register_failed_alloc_callback(failedAlloc);
+}
+
+void plat_status(float fps, float frameMs, float lcdFps) {
+#if PLAT_STATUS_LOG
+  static TaskHandle_t sLcd = nullptr, sAdc = nullptr;
+  if (!sLcd) sLcd = xTaskGetHandle("lcd_scan");
+  if (!sAdc) sAdc = xTaskGetHandle("input_adc");
+  unsigned loopHW = (unsigned)uxTaskGetStackHighWaterMark(nullptr);
+  unsigned lcdHW = sLcd ? (unsigned)uxTaskGetStackHighWaterMark(sLcd) : 0u;
+  unsigned adcHW = sAdc ? (unsigned)uxTaskGetStackHighWaterMark(sAdc) : 0u;
+  plat_log("[st] %4.1f fps %5.1f ms lcd %4.1f | int %6u lg %6u min %6u | psram %7u | stk loop %u lcd %u adc %u\n",
+           fps, frameMs, lcdFps,
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), loopHW, lcdHW, adcHW);
+#else
+  (void)fps; (void)frameMs; (void)lcdFps;
+#endif
+}
+
 #endif // ARDUINO_ARCH_ESP32
