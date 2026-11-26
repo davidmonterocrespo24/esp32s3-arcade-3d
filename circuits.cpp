@@ -401,6 +401,7 @@ static bool spriteFits(int i, int side, int type, float dist) {
   const Segment& s = segments[i];
   if (s.isTunnel() || segAt(i - 1).isTunnel()) return false;   // inside, or right at an exit
   if (s.spr[side] >= 0) return false;
+  dist = (float)lroundf(dist * 16.0f) * (1.0f / 16.0f);         // as stored in sprOff
   const float half = spriteWidth(type) * 0.5f;
   const float inner = dist - half, outer = dist + half;
   if (inner < 1.12f) return false;                               // on the road or the rumble strip
@@ -424,6 +425,18 @@ static bool spriteFits(int i, int side, int type, float dist) {
 static bool placeSprite(int i, int side, int type, float dist) {
   if (!spriteFits(i, side, type, dist)) return false;
   setSprite(segWrap(i), side, type, dist);
+  return true;
+}
+
+// A street lamp (drawn by the road pass at |x| 1.28) unless the spot is in a
+// tunnel, at its exit, or taken by a prop near the kerb.
+static bool addLamp(int i, int side) {
+  Segment& s = segAt(i);
+  if (s.isTunnel() || segAt(i - 1).isTunnel() || segAt(i + 1).isTunnel()) return false;
+  if (s.flags & (SEGF_CROSSWALK | SEGF_SPARE)) return false;
+  if (s.spr[side] >= 0 && s.sprX(side) * (side ? 1.0f : -1.0f) - spriteWidth(s.spr[side]) * 0.5f < 1.62f)
+    return false;
+  s.flags |= lampFlag(side);
   return true;
 }
 
@@ -623,12 +636,8 @@ static void decorateCity() {
 
   // Street lamps every 10 segments, alternating sides
   int lampSide = 0;
-  for (int i = 5; i < N - 2; i += 10) {
-    Segment& s = segments[i];
-    if (s.isTunnel() || segAt(i + 1).isTunnel() || (s.flags & (SEGF_CROSSWALK | SEGF_SPARE))) continue;
-    s.flags |= lampFlag(lampSide);
-    lampSide ^= 1;
-  }
+  for (int i = 5; i < N - 2; i += 10)
+    if (addLamp(i, lampSide)) lampSide ^= 1;
 
   // Traffic lights at the crossings; billboards down the side streets;
   // trees at the corners of the blocks
@@ -731,7 +740,7 @@ static void decorateCoast() {
             if (j == gap / 2) placeSprite(i, 1, SPR_PALM, 1.36f);
         }
         for (int i = i0; i < i1; i++) {
-          if (i % 8 == 4 && !segments[i].isTunnel()) segments[i].flags |= SEGF_LAMP_R;
+          if (i % 8 == 4) addLamp(i, 1);
           if (i % 4 == 0) {
             int r = sRng.range(0, 10);
             if (r < 5) placeSprite(i, 0, (r & 1) ? SPR_UMBRELLA_B : SPR_UMBRELLA, sRng.frange(1.5f, 2.3f));
@@ -756,7 +765,7 @@ static void decorateCoast() {
             else if (r < 9) placeSprite(i, 1, SPR_FLOWERS, sRng.frange(1.3f, 2.2f));
             else if (r < 10) placeSprite(i, 1, SPR_ROCK, sRng.frange(1.8f, 3.0f));
           } else if (i % 12 == 0) {
-            placeSprite(i, 1, SPR_POST, 1.15f);
+            placeSprite(i, 1, SPR_POST, 1.19f);
           }
         }
         break;
@@ -816,7 +825,7 @@ static void decorateCoast() {
         for (int i = i0; i < i1; i++) {
           if (i % 4 == 2 && sRng.chance(0.6f)) placeSprite(i, 0, (i & 4) ? SPR_UMBRELLA_B : SPR_UMBRELLA, sRng.frange(1.6f, 2.3f));
           if (i % 29 == 5) placeSprite(i, 0, SPR_SAILBOAT, sRng.frange(3.5f, 9.0f));
-          if (i % 10 == 6 && !segments[i].isTunnel()) segments[i].flags |= SEGF_LAMP_R;
+          if (i % 10 == 6) addLamp(i, 1);
         }
         break;
       case KZ_HILLS:
@@ -831,7 +840,7 @@ static void decorateCoast() {
               int t = r < 3 ? SPR_CYPRESS : (r < 5 ? SPR_FLOWERS : (r < 7 ? SPR_GRASS : (r < 8 ? SPR_ROCK : SPR_BUSH)));
               placeSprite(i, side, t, sRng.frange(1.4f, fenceRun ? 2.5f : 3.8f));
             } else if (i % 12 == 0) {
-              placeSprite(i, side, SPR_POST, 1.15f);
+              placeSprite(i, side, SPR_POST, 1.19f);
             }
           }
           if (i % 90 == 40) placeSprite(i, 1, SPR_BILLBOARD_A + sRng.range(0, 2), 3.0f);   // no neon by the sea
@@ -899,13 +908,13 @@ static void decorateMountain() {
               int t = r < 3 ? SPR_FLOWERS : (r < 5 ? SPR_GRASS : (r < 8 ? pine : SPR_BUSH));
               placeSprite(i, side, t, sRng.frange(near, fenceRun ? 2.5f : 4.5f));
             } else if (i % 12 == 6) {
-              placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.15f);
+              placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.19f);
             }
             break;
           }
           case MZ_FOREST:
             if ((h & 1) == 0) placeSprite(i, side, h % 11 == 1 ? SPR_ROCK : pine, sRng.frange(near + 0.15f, 4.2f));
-            else if (i % 12 == 6) placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.15f);
+            else if (i % 12 == 6) placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.19f);
             break;
           case MZ_WALL_L: case MZ_WALL_R:
             if (s.build[side]) {                      // fallen rocks at the foot of the face
@@ -918,7 +927,7 @@ static void decorateMountain() {
             }
             break;
           case MZ_HIGH:
-            if (i % 8 == (side ? 4 : 0)) placeSprite(i, side, SPR_SNOW_POLE, 1.16f);
+            if (i % 8 == (side ? 4 : 0)) placeSprite(i, side, SPR_SNOW_POLE, 1.19f);
             else if (h % 4 == 1) placeSprite(i, side, bare ? (h % 3 ? SPR_ROCK : SPR_BOULDER) : pine,
                                              sRng.frange(1.5f, 4.0f));
             break;
