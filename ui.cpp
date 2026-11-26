@@ -506,7 +506,7 @@ void ui_fadeOut(float t, float dur) {
 // Footer line with the controls of this board
 static void footer(const char* s, float t) {
   (void)t;
-  shadeRect(0, SCR_H - 13, SCR_W, 13, 29);
+  gfx_fillRect(0, SCR_H - 13, SCR_W, 13, UI_RGB(8, 10, 28));   // solid: hides the frozen HUD under it
   gfx_hspan(SCR_H - 13, 0, SCR_W, UI_EDGE);
   ui_label(SCR_CX, SCR_H - 10, s, UI_DIM, 1, UI_CENTER);
 }
@@ -1237,12 +1237,13 @@ void ui_drawResultsEx(const ResultRow* rows, const int* points, int recordFlags,
   ui_label(x + w - 10, y + 21, buf, UI_DIM, 1, UI_RIGHT);
 
   const bool gp = points != nullptr;
-  const int cTime = gp ? 218 : 236, cBest = gp ? 268 : 300, cPts = 304;
+  // right edges of the columns (the GP adds points at the far right)
+  const int cTime = gp ? 204 : 236, cBest = gp ? 254 : 300, cPts = 306;
   const int hy = y + 38;
   ui_label(x + 8, hy, "POS", UI_DIM, 1);
   ui_label(64, hy, "DRIVER", UI_DIM, 1);
   ui_label(cTime, hy, "TIME", UI_DIM, 1, UI_RIGHT);
-  ui_label(cBest, hy, "BEST LAP", UI_DIM, 1, UI_RIGHT);
+  ui_label(cBest, hy, gp ? "BEST" : "BEST LAP", UI_DIM, 1, UI_RIGHT);
   if (gp) ui_label(cPts, hy, "PTS", UI_DIM, 1, UI_RIGHT);
   gfx_hspanMode(hy + 10, x + 6, x + w - 6, UI_EDGE, GFX_BLEND, 26);
 

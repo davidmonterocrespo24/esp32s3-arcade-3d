@@ -417,8 +417,10 @@ static void updateRaceBanners() {
 
 static void update(float dt) {
   sStateT += dt;
-  if (sGoT >= 0) sGoT += dt;
-  if (sBanT >= 0) sBanT += dt;
+  if (sState != GS_PAUSE) {            // pause freezes the race overlays too
+    if (sGoT >= 0) sGoT += dt;
+    if (sBanT >= 0) sBanT += dt;
+  }
   if (sPending) {
     sOutT += dt;
     sPrev = sIn;                       // no edges while fading out
@@ -442,8 +444,9 @@ static void update(float dt) {
         updateDriving(dt);
       }
       raceCycle();
-      if ((sStateT > 0.5f && anyPressed()) || sStateT > DEMO_TIME || racers[PLAYER_ID].finished) {
-        sFeatured = (sFeatured + 1) % NUM_CIRCUITS;
+      if (!sPending &&
+          ((sStateT > 0.5f && anyPressed()) || sStateT > DEMO_TIME || racers[PLAYER_ID].finished)) {
+        sFeatured = (sFeatured + 1) % NUM_CIRCUITS;   // the title then features the next circuit
         go(actTitle);
       }
       break;
