@@ -14,11 +14,13 @@ The Makefile compiles every `../*.cpp` (the ESP32-only files are guarded by
 
 ## Emulator controls
 
-* **Left / Right**: steer
-* **Up / Down**: menus
+* **Left / Right**: steer; in menus they change values (difficulty) and
+  cycle the circuit carousel
+* **Up / Down**: move in menus (held: auto-repeat)
 * **Space / Down**: brake
 * **X / Left Shift**: turbo
 * **Enter**: confirm / pause
+* **P**: pause / resume (without confirming a menu item)
 * **Esc / Backspace**: back (close the window to quit)
 * **F12**: screenshot
 
@@ -46,9 +48,12 @@ Save data goes to `car_game_save.bin` next to the executable.
 | `--save` | enable save data (`car_game_save.bin` in the current folder) |
 | `--segs F` | at frame F print the 40 segments ahead of the camera |
 | `--steer A:B:V`, `--brake A:B` | older forms of `--in` |
+| `--state NAME[:C]` | jump to a screen before frame 0: `TITLE`, `DEMO`, `MENU`, `SELECT`, `COUNTDOWN`, `RACE`, `PAUSE`, `FINISH`, `RESULTS`, `STANDINGS`, `CHAMPION` on circuit C (for `STANDINGS`: after GP race C). `FINISH`..`CHAMPION` first fast-forward the race(s) with the autopilot, without rendering |
+| `--devkit` | menus react like on the two-button dev board (one button moves on release, confirm = both buttons never moves) |
 
-Without `--race` / `--gp` / `--title` the harness walks title → menu → QUICK
-RACE → circuit 0 (presses at frames 30, 50, 60, 80). Frames are written as
+Without `--race` / `--gp` / `--title` / `--state` the harness walks title →
+menu → QUICK RACE → circuit 0 (presses at frames 30, 50, 60, 80; screen changes
+fade out for 0.2 s, so the countdown starts at frame ~86). Frames are written as
 `frame_NNNN.ppm`; the run ends with the state, the classification (when a race
 ran) and the average host time per frame. It runs on a virtual 30 Hz clock and
 everything is seeded, so runs are reproducible.
