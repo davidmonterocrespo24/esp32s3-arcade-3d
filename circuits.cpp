@@ -406,7 +406,7 @@ static bool spriteFits(int i, int side, int type, float dist) {
   const float inner = dist - half, outer = dist + half;
   if (inner < 1.12f) return false;                               // on the road or the rumble strip
   if (dist > 15.5f) return false;                                // sprOff range
-  if (s.build[side] && outer > BUILDING_OFFSET - 0.02f) return false;   // through a facade
+  if (s.build[side] && outer > BUILDING_OFFSET - 0.01f) return false;   // through a facade
   if ((s.flags & railFlag(side)) && inner < RAIL_X + 0.12f) return false;
   if ((s.flags & lampFlag(side)) && inner < 1.62f) return false;
   if ((s.flags & SEGF_CROSSWALK) && inner < 1.62f && type != SPR_TRAFFIC_LIGHT) return false;
@@ -665,21 +665,21 @@ static void decorateCity() {
             if (i % 16 == side * 8 && built) placeSprite(i, side, SPR_STREET_TREE, 1.32f);
             if (i < 12 && i % 4 == 2) placeSprite(i, side, SPR_FLAG, 1.36f);
             if (i > N - 40 && i % 6 == 3) placeSprite(i, side, SPR_FLAG, 1.36f);
-            if (built && h % 29 == 3) placeSprite(i, side, SPR_PLANTER, 1.30f);
+            if (built && h % 29 == 3) placeSprite(i, side, SPR_PLANTER, 1.31f);
             break;
           case CZ_FINANCE:
-            if (built && h % 11 == 0) placeSprite(i, side, SPR_PLANTER, 1.30f);
+            if (built && h % 11 == 0) placeSprite(i, side, SPR_PLANTER, 1.31f);
             if (built && h % 97 == 5) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
-            if (built && h % 29 == 7) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_CYAN : SPR_NEON_PINK, 1.43f);
+            if (built && h % 29 == 7) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_CYAN : SPR_NEON_PINK, 1.44f);
             break;
           case CZ_OLDTOWN:
             if (built && i % 14 == side * 7) placeSprite(i, side, SPR_STREET_TREE, 1.32f);
-            if (built && h % 13 == 3) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
+            if (built && h % 13 == 3) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.44f);
             if (built && h % 101 == 9) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
             break;
           case CZ_SHOPPING:
-            if (built && h % 7 == 1) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
-            if (built && h % 17 == 4) placeSprite(i, side, SPR_PLANTER, 1.30f);
+            if (built && h % 7 == 1) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.44f);
+            if (built && h % 17 == 4) placeSprite(i, side, SPR_PLANTER, 1.31f);
             if (built && h % 89 == 11) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
             break;
           case CZ_PARK:
@@ -694,7 +694,7 @@ static void decorateCity() {
             break;
           case CZ_HARBOUR:
             if (side == 0 && h % 23 == 0) placeSprite(i, 0, SPR_SAILBOAT, sRng.frange(3.0f, 9.0f));
-            if (side == 1 && built && h % 15 == 2) placeSprite(i, 1, SPR_PLANTER, 1.30f);
+            if (side == 1 && built && h % 15 == 2) placeSprite(i, 1, SPR_PLANTER, 1.31f);
             break;
           default: break;
         }
@@ -918,7 +918,7 @@ static void decorateMountain() {
             break;
           case MZ_WALL_L: case MZ_WALL_R:
             if (s.build[side]) {                      // fallen rocks at the foot of the face
-              if (h % 17 == 3) placeSprite(i, side, SPR_BOULDER, 1.30f);
+              if (h % 7 == 3) placeSprite(i, side, SPR_GRASS, 1.30f);
             } else if (rail) {                        // the drop: keep the view open over the rail
               if (i % 10 == 5) placeSprite(i, side, SPR_SNOW_POLE, 1.40f);
               else if (h % 23 == 2) placeSprite(i, side, bare ? SPR_ROCK : pine, sRng.frange(1.6f, 2.2f));
