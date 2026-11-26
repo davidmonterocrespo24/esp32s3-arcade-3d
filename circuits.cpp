@@ -349,19 +349,6 @@ static void genLayout(const Design& D) {
   track_finish();
 }
 
-// Section containing segment i
-static int secOf(int i) {
-  i = segWrap(i);
-  int lo = 0, hi = sSecN - 1;
-  while (lo < hi) {
-    int mid = (lo + hi + 1) >> 1;
-    if (sSecStart[mid] <= i) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-static inline int zoneAt(int i) { return sSec[secOf(i)].zone; }
-
 // ═══════════════════════════════════════════════════════════════
 //  2. DECORATION HELPERS
 // ═══════════════════════════════════════════════════════════════
@@ -453,7 +440,8 @@ static bool forceSprite(int i, int side, int type, float dist) {
   return false;
 }
 
-// A building of random length on one side starting at i; returns its length.
+// One row of a district's building table: type, height range (BUILDING_H_UNIT
+// steps) and the weight of the random choice.
 struct BldPick { uint8_t type, hMin, hMax, weight; };
 
 static int pickWeighted(const BldPick* t, int n) {
