@@ -68,6 +68,44 @@ void gfx_rowRegions(int y, const float* bounds, const uint16_t* cols, int nRegio
 void gfx_gradientRow(int y, int x0, int x1, float r8, float g8, float b8);
 void gfx_ditherRow(int y, int x0, int x1, uint16_t c0, uint16_t c1, float t);
 
+// ═══════════════════════════════════════════════════════════════
+//  TEXTURED SPANS (8-bit indexed texels -> 16-entry RGB565 palette)
+//  Fixed point 16.16 coordinates; `mask` wraps the texel index
+//  (power-of-two size - 1). All clipped to the clip rectangle.
+// ═══════════════════════════════════════════════════════════════
+// Vertical span x, rows [y0, y1): texel col[(v >> 16) & mask], v += dv per row.
+void gfx_texColumn(int x, int y0, int y1, const uint8_t* col, uint32_t v, int32_t dv,
+                   uint32_t mask, const uint16_t* pal);
+// gfx_texColumn over a module that repeats every (1 << perShift) texels
+// (building floors): whenever v enters period p, the three palette entries
+// pal[slot..slot+2] are replaced by win[p] (clamped to nWin - 1), so every
+// floor of the column gets its own window colours inside one call.
+void gfx_texColumnWin(int x, int y0, int y1, const uint8_t* mod, uint32_t v, int32_t dv,
+                      uint32_t mask, int perShift, uint16_t* pal, int slot,
+                      const uint16_t* const* win, int nWin);
+// Horizontal span y, columns [x0, x1): texel row[(u >> 16) & mask], u += du per pixel
+// (u is the value at the centre of column x0).
+void gfx_texSpan(int y, int x0, int x1, const uint8_t* row, uint32_t u, int32_t du,
+                 uint32_t mask, const uint16_t* pal);
+
+// A texture source for gfx_rowRegionsTex: texel row, u at the centre of
+// screen column 0 (16.16, may wrap), du per pixel, mask, palette.
+struct GfxTexRow {
+  const uint8_t*  row;
+  uint32_t        u0;
+  int32_t         du;
+  uint32_t        mask;
+  const uint16_t* pal;
+};
+// gfx_rowRegions with textured regions: region r is filled from
+// tex[sel[r] - 1] when sel[r] > 0 (flat cols[r] otherwise). Boundary
+// pixels still blend the flat colours of their two regions.
+void gfx_rowRegionsTex(int y, const float* bounds, const uint16_t* cols, int nRegions,
+                       const uint8_t* sel, const GfxTexRow* tex);
+
+// 7 rows of the 5x7 glyph of c (bit 4 = leftmost column), for textures.
+const uint8_t* gfx_fontGlyph(char c);
+
 // 5x7 bitmap font, 6 px advance per character at scale 1.
 int  gfx_textWidth(const char* s, int scale);
 void gfx_text(int x, int y, const char* s, uint16_t c, int scale);

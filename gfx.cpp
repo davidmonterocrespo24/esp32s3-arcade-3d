@@ -326,6 +326,107 @@ void HOT gfx_rowRegions(int y, const float* b, const uint16_t* cols, int nr) {
   if (xs < gfx_cx1) fill16(row + xs, gfx_cx1 - xs, cols[nr - 1]);
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  TEXTURED SPANS
+// ═══════════════════════════════════════════════════════════════
+// n texels of a texture row into p (pixel pairs as 32-bit stores)
+static inline void texRun(uint16_t* p, int n, const uint8_t* row, uint32_t u, int32_t du,
+                          uint32_t mask, const uint16_t* pal) {
+  if (n <= 0) return;
+  if ((uintptr_t)p & 2) { *p++ = pal[row[(u >> 16) & mask]]; u += (uint32_t)du; n--; }
+  u32a* q = (u32a*)p;
+  for (int m = n >> 1; m > 0; m--) {
+    uint32_t a = pal[row[(u >> 16) & mask]]; u += (uint32_t)du;
+    uint32_t b = pal[row[(u >> 16) & mask]]; u += (uint32_t)du;
+    *q++ = a | (b << 16);
+  }
+  if (n & 1) *(uint16_t*)q = pal[row[(u >> 16) & mask]];
+}
+
+void HOT gfx_texColumn(int x, int y0, int y1, const uint8_t* col, uint32_t v, int32_t dv,
+                       uint32_t mask, const uint16_t* pal) {
+  if (x < gfx_cx0 || x >= gfx_cx1) return;
+  if (y0 < gfx_cy0) { v += (uint32_t)(dv * (gfx_cy0 - y0)); y0 = gfx_cy0; }
+  if (y1 > gfx_cy1) y1 = gfx_cy1;
+  if (y1 <= y0) return;
+  uint16_t* p = gfx_fb + y0 * SCR_W + x;
+  for (int n = y1 - y0; n > 0; n--) {
+    *p = pal[col[(v >> 16) & mask]];
+    v += (uint32_t)dv;
+    p += SCR_W;
+  }
+}
+
+void HOT gfx_texColumnWin(int x, int y0, int y1, const uint8_t* mod, uint32_t v, int32_t dv,
+                          uint32_t mask, int perShift, uint16_t* pal, int slot,
+                          const uint16_t* const* win, int nWin) {
+  if (x < gfx_cx0 || x >= gfx_cx1 || nWin <= 0) return;
+  if (y0 < gfx_cy0) { v += (uint32_t)(dv * (gfx_cy0 - y0)); y0 = gfx_cy0; }
+  if (y1 > gfx_cy1) y1 = gfx_cy1;
+  if (y1 <= y0) return;
+  uint16_t* p = gfx_fb + y0 * SCR_W + x;
+  const int sh = 16 + perShift;
+  int cur = -1;
+  for (int n = y1 - y0; n > 0; n--) {
+    int per = (int)(v >> sh);
+    if (per != cur) {
+      cur = per;
+      const uint16_t* w = win[per < nWin ? per : nWin - 1];
+      pal[slot] = w[0]; pal[slot + 1] = w[1]; pal[slot + 2] = w[2];
+    }
+    *p = pal[mod[(v >> 16) & mask]];
+    v += (uint32_t)dv;
+    p += SCR_W;
+  }
+}
+
+void HOT gfx_texSpan(int y, int x0, int x1, const uint8_t* row, uint32_t u, int32_t du,
+                     uint32_t mask, const uint16_t* pal) {
+  if (y < gfx_cy0 || y >= gfx_cy1) return;
+  if (x0 < gfx_cx0) { u += (uint32_t)(du * (gfx_cx0 - x0)); x0 = gfx_cx0; }
+  if (x1 > gfx_cx1) x1 = gfx_cx1;
+  if (x1 <= x0) return;
+  texRun(gfx_fb + y * SCR_W + x0, x1 - x0, row, u, du, mask, pal);
+}
+
+void HOT gfx_rowRegionsTex(int y, const float* b, const uint16_t* cols, int nr,
+                           const uint8_t* sel, const GfxTexRow* tex) {
+  if (y < gfx_cy0 || y >= gfx_cy1 || nr <= 0) return;
+  uint16_t* row = gfx_fb + y * SCR_W;
+  int xs = gfx_cx0;
+  float prevE = (float)gfx_cx0;
+  for (int r = 0; r < nr && xs < gfx_cx1; r++) {
+    float e = (r < nr - 1) ? b[r] : (float)gfx_cx1;
+    if (e < prevE) e = prevE;
+    prevE = e;
+    if (e <= (float)xs) continue;
+    if (e > (float)gfx_cx1) e = (float)gfx_cx1;
+    int ef = (int)e;
+    if (ef > xs) {
+      if (sel[r]) {
+        const GfxTexRow& t = tex[sel[r] - 1];
+        texRun(row + xs, ef - xs, t.row, t.u0 + (uint32_t)(t.du * xs), t.du, t.mask, t.pal);
+      } else {
+        fill16(row + xs, ef - xs, cols[r]);
+      }
+      xs = ef;
+    }
+    if (r < nr - 1 && ef == xs && ef < gfx_cx1) {
+      uint32_t a = (uint32_t)((e - ef) * 32.0f + 0.5f);
+      row[ef] = blend565(cols[r], cols[r + 1], a);
+      xs = ef + 1;
+    }
+  }
+  if (xs < gfx_cx1) {
+    if (sel[nr - 1]) {
+      const GfxTexRow& t = tex[sel[nr - 1] - 1];
+      texRun(row + xs, gfx_cx1 - xs, t.row, t.u0 + (uint32_t)(t.du * xs), t.du, t.mask, t.pal);
+    } else {
+      fill16(row + xs, gfx_cx1 - xs, cols[nr - 1]);
+    }
+  }
+}
+
 // 4x4 Bayer thresholds
 static const uint8_t BAYER4[4][4] = {
   { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 }
@@ -427,6 +528,12 @@ static const uint8_t FONT5x7[64][7] = {
   {0x04,0x0A,0x11,0x00,0x00,0x00,0x00}, // ^
   {0x00,0x00,0x00,0x00,0x00,0x00,0x1F}  // _
 };
+
+const uint8_t* gfx_fontGlyph(char ch) {
+  if (ch >= 'a' && ch <= 'z') ch -= 32;
+  if (ch < 32 || ch > 95) ch = '?';
+  return FONT5x7[ch - 32];
+}
 
 int gfx_textWidth(const char* s, int scale) {
   int n = 0;
