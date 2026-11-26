@@ -503,6 +503,16 @@ static void dressTunnelMouths(int type, int hMin, int hMax, int len) {
   }
 }
 
+// Chequered flags along both sides of the start straight: over the grid and
+// just past the line (race-day dressing on every circuit).
+static void startFlags() {
+  const int N = segCount;
+  for (int side = 0; side < 2; side++) {
+    for (int i = 2; i < 12; i += 4) forceSprite(i, side, SPR_FLAG, 1.36f);
+    for (int i = N - 36; i < N - 2; i += 6) forceSprite(i, side, SPR_FLAG, 1.36f);
+  }
+}
+
 // Chevrons on the outside of sharp corners, distance boards before the
 // hardest ones. Run after the zones (they replace ordinary props).
 static void cornerSigns(float chevronCurve, float boardCurve) {
@@ -663,8 +673,6 @@ static void decorateCity() {
         switch (z) {
           case CZ_BOULEVARD:
             if (i % 16 == side * 8 && built) placeSprite(i, side, SPR_STREET_TREE, 1.32f);
-            if (i < 12 && i % 4 == 2) placeSprite(i, side, SPR_FLAG, 1.36f);
-            if (i > N - 40 && i % 6 == 3) placeSprite(i, side, SPR_FLAG, 1.36f);
             if (built && h % 29 == 3) placeSprite(i, side, SPR_PLANTER, 1.31f);
             break;
           case CZ_FINANCE:
@@ -1035,6 +1043,8 @@ void buildCircuit(int id) {
       cornerSigns(6.5f, 8.0f);
       break;
   }
+
+  startFlags();
 
   // Start/finish line; nothing in the way on the grid; scratch flags off
   segments[0].flags |= SEGF_START;
