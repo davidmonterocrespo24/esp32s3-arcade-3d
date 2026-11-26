@@ -58,8 +58,16 @@ fade out for 0.2 s, so the countdown starts at frame ~86). Frames are written as
 ran) and the average host time per frame. It runs on a virtual 30 Hz clock and
 everything is seeded, so runs are reproducible.
 
-Contact sheets: `python tools/sheet.py <out.png> <scale> a.ppm b.ppm ...`
-(2 columns, needs Pillow).
+## Tools (`tools/`)
+
+| Tool | Use |
+| --- | --- |
+| `python tools/sheet.py <out.png> <scale> a.ppm b.ppm ...` | contact sheet, 2 columns (needs Pillow) |
+| `bash tools/balance.sh` | the autopilot races every circuit at every difficulty; prints its place, time and the winner (targets: EASY P1-P2, NORMAL P2-P4, HARD P4-P6) |
+| `python tools/analyze_dump.py log.txt` | checks a `--dump 1` log (`./car_game_headless out 4700 --race C --auto --dump 1 > log.txt`): overlapping cars, contacts, lateral steps, jitter, overtakes, lap counters |
+| `bash tools/check_circuits.sh` | builds `tools/circuit_dump.cpp` with the game's circuit code, validates every circuit's layout and keep-out rules (`validate_circuits.py`) and checks that a circuit is identical whatever was built before it |
+
+The shell tools run from `emulator/` in WSL / Linux after `make headless`.
 
 ## How it works
 

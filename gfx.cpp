@@ -31,6 +31,10 @@ bool gfx_init() {
   if (!gfx_fb) return false;
   plat_log("gfx: %ux%u framebuffer (%u B) in %s\n", SCR_W, SCR_H,
            (unsigned)bytes, sFbInternal ? "internal SRAM" : "PSRAM");
+  plat_log_iram("gfx_hspan", (const void*)gfx_hspan);
+  plat_log_iram("gfx_fillPoly", (const void*)gfx_fillPoly);
+  plat_log_iram("gfx_rowRegionsTex", (const void*)gfx_rowRegionsTex);
+  plat_log_iram("gfx_texColumnWin", (const void*)gfx_texColumnWin);
   gfx_resetClip();
   gfx_clear(0);
   return true;
@@ -462,7 +466,7 @@ void gfx_ditherRow(int y, int x0, int x1, uint16_t c0, uint16_t c1, float t) {
 //  5x7 FONT (ASCII 32..95; lowercase is drawn as uppercase)
 //  Each glyph: 7 rows, bit 4 = leftmost column.
 // ═══════════════════════════════════════════════════════════════
-static const uint8_t FONT5x7[64][7] = {
+const uint8_t gfx_font5x7[64][7] = {
   {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ' '
   {0x04,0x04,0x04,0x04,0x04,0x00,0x04}, // !
   {0x0A,0x0A,0x00,0x00,0x00,0x00,0x00}, // "
@@ -532,7 +536,7 @@ static const uint8_t FONT5x7[64][7] = {
 const uint8_t* gfx_fontGlyph(char ch) {
   if (ch >= 'a' && ch <= 'z') ch -= 32;
   if (ch < 32 || ch > 95) ch = '?';
-  return FONT5x7[ch - 32];
+  return gfx_font5x7[ch - 32];
 }
 
 int gfx_textWidth(const char* s, int scale) {
@@ -548,7 +552,7 @@ void gfx_text(int x, int y, const char* s, uint16_t c, int scale) {
     if (ch == '\n') { x = x0; y += 8 * scale; continue; }
     if (ch >= 'a' && ch <= 'z') ch -= 32;
     if (ch < 32 || ch > 95) ch = '?';
-    const uint8_t* g = FONT5x7[ch - 32];
+    const uint8_t* g = gfx_font5x7[ch - 32];
     for (int r = 0; r < 7; r++) {
       uint8_t bits = g[r];
       if (!bits) continue;

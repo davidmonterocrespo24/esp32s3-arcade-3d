@@ -1,5 +1,9 @@
 # 7. Physics and input
 
+> This page describes the engine of the `graphics-overhaul` branch, before the
+> game. The game's physics (contacts, turbo, slipstream, autopilot) are on
+> [page 11](11-rivals-ai.md), its controls and input on [page 14](14-game-flow-and-ui.md).
+
 ## 7.1 Physics changes (`physics.cpp`)
 
 | Change | Before | After |

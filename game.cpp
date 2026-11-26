@@ -41,6 +41,7 @@
 #include "circuits.h"
 #include "rendering.h"
 #include "render_road.h"
+#include "textures.h"
 #include "render_player.h"
 #include "render_cars.h"
 #include "render_hud.h"
@@ -100,6 +101,7 @@ static int   sFeatured = 0;                   // title: featured circuit
 static float sFeatT = 0;
 static float sGoT = -1;                       // seconds since GO (GO! overlay)
 static int   sLastLap = 0;
+static bool  sRocketShown = false;            // ROCKET START banner already shown this race
 static float sFlyPos = 0, sFlySpeed = 0;      // circuit-select flyover camera
 static unsigned long sLastMs = 0;
 
@@ -289,6 +291,7 @@ static void startRace(int circuit) {
   autopilot = gameDebug.autoDrive;
   skyOffset = 0;
   sLastLap = 0;
+  sRocketShown = false;
   sBanT = -1;
   sGoT = -1;
   sRecFlags = 0;
@@ -399,6 +402,12 @@ static void computeResults() {
 static void updateRaceBanners() {
   const Racer& P = racers[PLAYER_ID];
   const int laps = curCircuit().laps;
+  // rocket start (physics: TURBO pressed within 0.3 s of GO): announced
+  // once the GO! overlay and its lights are gone (1.3 s), so they never stack
+  if (rocketStarted && !sRocketShown && sGoT > 1.3f) {
+    sRocketShown = true;
+    banner("ROCKET START", "TURBO RIGHT ON GO", nullptr, UI_GOLD);
+  }
   if (P.lap == sLastLap) return;
   sLastLap = P.lap;
   if (P.lap <= 0 || P.finished) return;
@@ -710,6 +719,10 @@ void game_setup() {
   if (!gfx_init()) plat_log("gfx_init FAILED: no memory for the framebuffer\n");
   initCarRenderer();
   if (!track_init()) plat_log("track_init FAILED\n");
+  // Procedural textures (~23 KB, internal first): now, while the internal
+  // heap is unfragmented, instead of lazily on the first race frame
+  textures_init();
+  ui_init();
   // Frozen frame for the pause screen: PSRAM only (never worth internal RAM)
   sSnap = (uint16_t*)plat_alloc_psram((size_t)SCR_W * SCR_H * sizeof(uint16_t));
   plat_log("ui: pause snapshot %s\n", sSnap ? "153600 B in PSRAM" : "unavailable (pause re-renders)");

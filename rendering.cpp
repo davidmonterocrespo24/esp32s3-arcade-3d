@@ -70,6 +70,10 @@ static inline int wrapBG(int x) {
   return x < 0 ? x + BG_W : x;
 }
 
+int sky_sunX(float skyOff) {
+  return wrapBG(SCR_W - (int)(skyOff * 0.25f) - 40) - BG_W / 4;
+}
+
 // Sum of sines; the first `ridged` octaves use 1 - 2|sin| (sharp crests and
 // rounded valleys: mountain peaks), the others plain sines (small bumps).
 // Integer frequencies keep the panorama seamless at the wrap.
@@ -476,7 +480,7 @@ void drawSky(float skyOff, float timeSec) {
   // 3. Sun / moon (slow parallax), with an additive glow
   int sunX = -1000;
   {
-    int sx = wrapBG(SCR_W - (int)(skyOff * 0.25f) - 40) - BG_W / 4;
+    int sx = sky_sunX(skyOff);
     int sy = (int)pal.sunY;
     if (sx > -80 && sx < SCR_W + 80) {
       sunX = sx;

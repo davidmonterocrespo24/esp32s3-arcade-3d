@@ -136,8 +136,10 @@ ST(len, y, zone)  STF(len, y, zone, flags)  CO(turn, len, ease, y, zone)
   ~0.4 m on the car's scale while a lamp is 3600 world units (~15 m), so the
   old floor-based heights made 30-floor towers shorter than a street lamp.
   Heights are now chosen for the look: towers 170–255 (a near tower fills the
-  screen height), offices 110–210, brick/stone 70–160, shops 40–80, villas
-  55–100, cliffs 120–255, retaining walls 34–44.
+  screen height), offices 110–210, brick/stone 70–160, shops 40–80,
+  retaining walls 34–44. (Integration: the textured renderer draws heights
+  3×, so villas are now 32–52 with 3× floors, rock faces 50–125 and tunnel
+  mouths 110–140; see 13.11.)
 * **Generic passes.** `markTunnels` (tunnel sections, everything inside
   cleared) · `dressTunnelMouths` (rock faces 14 segments either side on the
   coast and in the mountains, concrete walls in the city) · `cornerSigns`
@@ -305,3 +307,18 @@ All additive (nothing renamed or removed):
   `waterDeep`, `seaGlint`, `skylineMid`, `snowCap`.
 * `rendering.h`: `bgTime`.
 * `Segment::deco` and `pad` stay 0 (unused).
+
+## 13.11 After the integration
+
+* Villas 34-50 (promenade) and 32-52 (village), rock faces 55-100 (sea wall),
+  65-110 (cape), 50-95 (lighthouse), 75-125 (mountain walls), tunnel mouths
+  110-135 (coast) and 115-140 (mountain): the city renderer draws heights 3×
+  (page 12), and the old values hid the sea, the islands and the ranges. The
+  Rng call sequence is unchanged, so everything else on the circuits is
+  identical.
+* The tools live in the repository now: `emulator/tools/circuit_dump.cpp`,
+  `validate_circuits.py` and `check_circuits.sh` (all three circuits pass,
+  each is identical whatever was built before it).
+* Measured after the merge: autopilot best laps city 32.2 s, coast 33.4 s,
+  mountain 33.8 s (the engine fixes of page 11 made the mountain faster);
+  the balance is on target on all three (page 11).

@@ -107,10 +107,10 @@ PSRAM fallback, placement logged. The banners (drawn a few seconds per lap)
 go to PSRAM. If no memory can be found at all, every texture falls back to a
 1-texel stub and the renderers draw flat colours.
 
-`textures_init()` is idempotent; `drawRoad()` calls it lazily on its first
-frame. Integrator: call it in `game_setup()` right after `track_init()` so
-the block is allocated while the heap is unfragmented and the line appears
-in the boot log (see 12.8).
+`textures_init()` is idempotent. `game_setup()` calls it right after
+`track_init()`, so the block is allocated while the heap is unfragmented and
+the line appears in the boot log (`drawRoad()` would otherwise call it
+lazily on its first frame).
 
 ### Palettes, lighting, windows
 
@@ -243,8 +243,9 @@ crests), widening towards the camera; it follows `drawSky`'s sun position
   and the next one (4 rows of half a segment, 14 checks across).
 * **Gantry**: two lattice towers, a truss with zig-zag bracing, the
   **START / FINISH banner** (texture; FINISH on the player's final lap,
-  floodlit at night) and three **start lights** mirroring the countdown (red
-  one by one in `GS_COUNTDOWN`, green for 2.5 s after GO, then off).
+  floodlit at night) and five **start lights** in the same state as the
+  UI's countdown gantry (`ui_countdownLightMask()`: on in a ripple, out one
+  by one during 3-2-1, green for 2.5 s after GO, then off).
 * **Guard rails** at `RAIL_X` 1.18: W-beam (lit top, groove, shadowed
   bottom), a post every segment, reflectors every other post (white left,
   amber right) that glow at night.
@@ -380,3 +381,19 @@ sheets (`emulator/tools/sheet.py`):
 * The far LOD (flat colour) only triggers below ~1.3 px per floor, i.e. beyond
   the draw distance for the default scale; mip level 3 (window dots) covers
   the far range.
+
+## 12.11 After the integration
+
+* **Heights.** The designed circuits had raised every height about 3× for
+  the 1× renderer, so with `BLD_V_SCALE` 3 villas became 10-18-storey blocks
+  and rock faces hid the sky. City heights were kept; villas are now 32-52
+  units drawn with floors (and texels) three times as tall (`VILLA_FLOOR_K`
+  in render_building.cpp: two- or three-storey houses under terracotta
+  roofs, shorter than the palms and lamps); rock faces are 50-125 and tunnel
+  mouths 110-140, so the backgrounds show above them.
+* The slice order: cars before the slice's sprites, lamps and gantry.
+* The sun glitter uses `sky_sunX()` from rendering.cpp (the one sun position).
+* gfx exports its font table (`gfx_font5x7`); the UI no longer keeps a copy.
+* The four span fillers are `HOT` = IRAM + noinline (checked in the map:
+  all of `gfx_texColumn`, `gfx_texColumnWin`, `gfx_texSpan` and
+  `gfx_rowRegionsTex` are in IRAM); `drawWallColumns` stays in flash.

@@ -19,7 +19,12 @@
   // Per-pixel loops must not run from flash: executing XIP through the
   // instruction cache while the same cache serves PSRAM and texture reads
   // thrashes it (lesson from the SOTN/MGS ports on this same chip).
-  #define HOT IRAM_ATTR
+  // noinline: GCC otherwise inlines a HOT function into its caller, which
+  // lives in flash, and the IRAM placement is silently lost (measured:
+  // rasterTri and convertBand ran from flash). So HOT goes ONLY on
+  // functions that contain a whole per-pixel / per-span / per-column loop;
+  // per-pixel helpers stay `static inline` without HOT.
+  #define HOT IRAM_ATTR __attribute__((noinline))
   // Small hot tables kept in internal DRAM instead of flash-mapped rodata.
   #define FAST_DATA DRAM_ATTR
 #else
@@ -58,5 +63,10 @@ bool  plat_load(void* data, size_t n);
 void  plat_init();
 // Call once per second from the game loop (prints only if PLAT_STATUS_LOG).
 void  plat_status(float fps, float frameMs, float lcdFps);
+
+// ---- additions (integration) ----
+// Boot check that a HOT loop really landed in IRAM (ESP32: logs
+// "iram: <name> yes" or "iram: <name> NO (flash)"; nothing on the PC).
+void  plat_log_iram(const char* name, const void* fn);
 
 #endif // PLATFORM_H

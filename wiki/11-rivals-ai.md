@@ -377,8 +377,27 @@ profile adapts by itself, the pace table may need a nudge.
 * Rivals do not defend (no blocking) and do not react to a faster car behind.
 * Rival-rival contact uses the same bump model but rivals seldom touch, so it
   is little exercised in the traces.
-* A scenery sprite on the near boundary of the slice a rival is drawn in is
-  painted before the rival (render_road calls `cars_drawSlice` after the
-  slice's sprites); see the integrator notes.
-* The balance was measured on the provisional circuits; the themes' circuits
-  will need a re-run of the matrix.
+* (Fixed in the integration: `render_road` now calls `cars_drawSlice` before
+  the slice's sprites, lamps and gantry.)
+* (Re-run in the integration on the designed circuits: on target without
+  any change, see below.)
+
+## 11.12 After the integration
+
+Measured on the final, designed circuits (page 13) with the merged renderer
+(`tools/balance.sh`, `tools/analyze_dump.py`):
+
+| | City | Coast | Mountain | Target |
+| --- | --- | --- | --- | --- |
+| EASY | P1 | P1 | P1 | P1-P2 |
+| NORMAL | P3 (1.25 s behind) | P2 (1.0 s) | P2 (0.36 s) | P2-P4 |
+| HARD | P4 | P5 | P5 | P4-P6 |
+
+Best laps 32.2 / 33.4 / 33.8 s; Grand Prix VIPER 27, YOU 19, NOVA 18, BLITZ 11,
+RAVEN 5, FURY 4. Per-frame traces on all three circuits: no overlapping
+frames, no contacts, lateral steps ≤ 0.06, every car within |x| ≤ 0.97 (never
+at a rail or a wall), no crashes, lap counters correct. No pace change was
+needed. Also added: the racing line and speed profile are rebuilt only when
+the circuit changes (restart, carousel), `rasterTri` really is in IRAM now
+(`HOT` = IRAM + noinline), and the HUD shows `rocketStarted` (ROCKET START
+banner) and `draft` (SLIPSTREAM tag).

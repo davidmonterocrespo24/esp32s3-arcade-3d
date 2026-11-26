@@ -45,7 +45,15 @@ struct Look {
   bool    floored;    // body period = one floor
   bool    jagged;     // natural rock: jagged top edge
   bool    neon;       // crown / sign glow at night
+  float   floorK;     // floor height (and texel size) x BUILDING_FLOOR_H
 };
+
+// Villas get floors (and texels) 3x the city's: a city floor is ~1/10 of a
+// street lamp, which reads as a dense downtown, but a villa as tall as a
+// palm then shows 10-18 window rows, a hotel instead of a two-storey house.
+// Villas only stand on the coast, among cliffs and palms, so their floor
+// scale never sits next to a city building's.
+#define VILLA_FLOOR_K 3.0f
 
 static uint8_t cliffTint(int v) {
   static const uint8_t COAST[4] = { 0, 3, 0, 2 }, MOUNTAIN[4] = { 1, 2, 1, 1 };
@@ -56,7 +64,7 @@ static uint8_t cliffTint(int v) {
 
 static Look lookOf(uint8_t style) {
   const int v = bldVariant(style);
-  Look L = { WT_OFFICE, (uint8_t)(v & 3), 45, ROOF_FLAT, true, false, true, false, false };
+  Look L = { WT_OFFICE, (uint8_t)(v & 3), 45, ROOF_FLAT, true, false, true, false, false, 1.0f };
   switch (bldType(style)) {
     case BLD_OFFICE: L.tex = (v & 4) ? WT_RIBBON : WT_OFFICE; L.litPct = (uint8_t)(26 + (v >> 3) * 20); break;
     case BLD_GLASS:  L.tex = WT_GLASS; L.curtain = true; L.litPct = (uint8_t)(22 + (v >> 2) * 7); break;
@@ -64,7 +72,7 @@ static Look lookOf(uint8_t style) {
     case BLD_STONE:  L.tex = WT_STONE; L.litPct = (uint8_t)(28 + (v >> 2) * 6); break;
     case BLD_MODERN: L.tex = WT_MODERN; L.litPct = (uint8_t)(20 + (v >> 2) * 6); L.neon = true; break;
     case BLD_SHOPS:  L.tex = WT_SHOPS; L.litPct = (uint8_t)(38 + (v >> 2) * 6); L.neon = true; break;
-    case BLD_VILLA:  L.tex = WT_VILLA; L.litPct = 40; L.roof = ROOF_PITCHED; break;
+    case BLD_VILLA:  L.tex = WT_VILLA; L.litPct = 40; L.roof = ROOF_PITCHED; L.floorK = VILLA_FLOOR_K; break;
     case BLD_CLIFF:  L.tex = WT_CLIFF; L.colors = cliffTint(v); L.windows = false; L.floored = false;
                      L.jagged = true; L.roof = ROOF_NATURAL; break;
     case BLD_WALL:   L.tex = WT_WALL; L.windows = false; L.floored = false; L.roof = ROOF_NATURAL; break;
@@ -409,7 +417,9 @@ void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t s
   const float dir = isLeft ? -1.0f : 1.0f;
   const float Hu = (float)heightUnits * BUILDING_H_UNIT;          // shared units
   const float Hs = Hu * BLD_V_SCALE;                               // px * scale
-  const float floorPS = BUILDING_FLOOR_H * BLD_V_SCALE;
+  const float floorH = BUILDING_FLOOR_H * L.floorK;                // one floor (shared units)
+  const float uK = 1.0f / L.floorK;                                // texels keep their aspect
+  const float floorPS = floorH * BLD_V_SCALE;
   const float depthPS = BUILDING_W * BLD_DEPTH_SCALE;
   const float ridgePS = L.roof == ROOF_PITCHED ? BLD_RIDGE_FLOORS * floorPS : 0.0f;
 
@@ -431,11 +441,11 @@ void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t s
   const PalSet& SP = palettes(isLeft ? 0 : 1, L, style, sideFace, fog32);
 
   // Vertical layout in texels
-  const float vTot = Hu / BUILDING_FLOOR_H * TEX_V_PER_FLOOR;
+  const float vTot = Hu / floorH * TEX_V_PER_FLOOR;
   int floors = 0;
   float capV, baseV;
   if (L.floored) {
-    floors = (int)(Hu / BUILDING_FLOOR_H);
+    floors = (int)(Hu / floorH);
     if (floors < 1) { floors = 0; capV = vTot; baseV = 0; }
     else { capV = vTot - floors * (float)TEX_V_PER_FLOOR; baseV = T.base ? (float)TEX_V_PER_FLOOR : 0.0f; }
   } else {
@@ -462,7 +472,7 @@ void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t s
   {
     const float nearZ = pf.z - SEG_LEN;                     // unclipped near boundary
     const float frac = clampF((pn.z - nearZ) / SEG_LEN, 0.0f, 1.0f);
-    const float uN = ((float)sIdx + frac) * TEX_U_PER_SEG, uF = ((float)sIdx + 1.0f) * TEX_U_PER_SEG;
+    const float uN = ((float)sIdx + frac) * TEX_U_PER_SEG * uK, uF = ((float)sIdx + 1.0f) * TEX_U_PER_SEG * uK;
     J.xa = sideN; J.xb = sideF;
     J.gya = gN; J.gyb = gF;
     J.tya = topN; J.tyb = topF;
@@ -492,8 +502,8 @@ void drawBuilding(const ProjPt& pn, const ProjPt& pf, int heightUnits, uint8_t s
   // 3. FRONT FACADE (first slice of the building): constant depth, affine u
   if (showFront) {
     const PalSet& FP = palettes(isLeft ? 2 : 3, L, style, TF_FRONT, fog32);
-    const float uS = (float)sIdx * TEX_U_PER_SEG + 7.0f;
-    const float uW = depthPS / SCR_CX * ((float)TEX_U_PER_SEG / SEG_LEN);
+    const float uS = (float)sIdx * TEX_U_PER_SEG * uK + 7.0f;
+    const float uW = depthPS / SCR_CX * ((float)TEX_U_PER_SEG / SEG_LEN) * uK;
     WallJob F = J;
     F.xa = sideN; F.xb = outN;
     F.gya = F.gyb = gN;

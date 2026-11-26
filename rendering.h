@@ -27,4 +27,9 @@ void initBackground(int theme);
 // theme chosen at init, with the current palette.
 void drawSky(float skyOffset, float timeSec);
 
+// Screen x of the sun / moon centre for a parallax offset (may lie off
+// screen). drawSky draws it there; the road's sun glitter on the sea
+// (render_road) uses the same value, so the two can never drift apart.
+int sky_sunX(float skyOffset);
+
 #endif // RENDERING_H

@@ -1,5 +1,9 @@
 # 8. Build, test and verification status
 
+> The build steps below still apply. The game's harness options, test recipes,
+> tools and current build sizes are on [page 10](10-game-architecture.md)
+> (sections 10.6-10.9).
+
 ## 8.1 Hardware build (Arduino IDE)
 
 1. Arduino-ESP32 core **4.0.0** (compile-verified; 3.x should work too but was not tested).

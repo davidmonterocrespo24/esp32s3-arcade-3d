@@ -110,8 +110,9 @@ static void setWindow(int x0, int y0, int x1, int y1) {   // inclusive
 
 // Native RGB565 -> panel byte order, two pixels per 32-bit word, plus a
 // cheap fingerprint of the band (a rotate and a xor per word, data already
-// in a register).
-static inline uint32_t IRAM_ATTR convertBand(uint16_t* dst, const uint16_t* src) {
+// in a register). Not inline: it must stay a function of its own so the
+// IRAM placement survives (an inlined copy runs from flash).
+static uint32_t IRAM_ATTR __attribute__((noinline)) convertBand(uint16_t* dst, const uint16_t* src) {
   const u32a* s = (const u32a*)src;
   u32a* d = (u32a*)dst;
   uint32_t h = 0x811C9DC5u;
@@ -278,6 +279,7 @@ bool display_init() {
   sReady = true;
   plat_log("lcd: ILI9341 %d MHz, %d-line DMA bands, snapshots in PSRAM\n",
            LCD_SPI_HZ / 1000000, CHUNK_LINES);
+  plat_log_iram("convertBand", (const void*)convertBand);
   return true;
 }
 

@@ -149,6 +149,7 @@ static inline float perFrame(float f, float dt) { return powf(f, dt * 60.0f); }
 static float* sLine = nullptr;   // [MAX_SEGS] line x at each segment's near boundary
 static float* sProf = nullptr;   // [MAX_SEGS] speed limit in each segment, fraction of maxSpeed
 static int    sTabN = 0;         // segCount the tables describe (0 = none)
+static int    sTabCircuit = -1;  // circuit they were built for (circuits are deterministic)
 
 static bool allocTables() {
   if (sLine) return true;
@@ -318,7 +319,13 @@ const char* ai_style(int i) {
 //  INIT
 // ═══════════════════════════════════════════════════════════════
 void rivals_init() {
-  if (allocTables()) buildTables();
+  // The tables depend only on the circuit (built deterministically) and the
+  // car's constants: skip the rebuild (Gaussians + a 3-lap reference run)
+  // on a restart or when the select carousel comes back to a circuit.
+  if (allocTables() && !(sTabCircuit == currentCircuit && tablesOk())) {
+    buildTables();
+    sTabCircuit = tablesOk() ? currentCircuit : -1;
+  }
   const int d = iclamp(difficulty, 0, 2);
   sPlayerXVel = 0.0f;
   sPlayerPrevX = racers[PLAYER_ID].x;

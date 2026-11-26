@@ -148,4 +148,13 @@ void ui_drawCountdownEx(float t, bool gp, int gpRace, int gpRaces);
 // Lights + 3-2-1 only (the demo)
 void ui_drawCountdownLights(float t);
 
+// ---- additions (integration) ----
+// Boot: logs where the HOT shading span landed (IRAM check, ESP32 only).
+void ui_init();
+// Start-light state of the countdown t seconds after it began (the world
+// gantry in render_road mirrors it): bit i set = light i of 5 lit red;
+// *green = all five green (from GO until UI_GO_GREEN seconds after it).
+int  ui_countdownLightMask(float t, bool* green);
+#define UI_GO_GREEN 2.5f
+
 #endif // UI_H

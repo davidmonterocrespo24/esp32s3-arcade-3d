@@ -105,6 +105,9 @@ void gfx_rowRegionsTex(int y, const float* bounds, const uint16_t* cols, int nRe
 
 // 7 rows of the 5x7 glyph of c (bit 4 = leftmost column), for textures.
 const uint8_t* gfx_fontGlyph(char c);
+// The glyph table itself (ASCII 32..95), for callers that look glyphs up
+// per pixel row (ui.cpp's text runs) and want the lookup inlined.
+extern const uint8_t gfx_font5x7[64][7];
 
 // 5x7 bitmap font, 6 px advance per character at scale 1.
 int  gfx_textWidth(const char* s, int scale);

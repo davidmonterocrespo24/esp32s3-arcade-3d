@@ -355,3 +355,14 @@ stack is 4 KB of internal heap.
   a 0.25 s dip.
 * `--state` fast-forwards skip the countdown, so their races differ slightly
   from a real run (screenshots only).
+
+## 14.13 After the integration
+
+* `game_setup()` also calls `textures_init()` (after `track_init()`) and
+  `ui_init()` (boot log of the HOT `shadeSpan` placement).
+* `ui_countdownLightMask(t, &green)` exports the light state; the world
+  gantry over the start line mirrors the UI's five lights.
+* Race banners: **ROCKET START** (TURBO pressed within 0.3 s of GO), shown
+  once the GO! overlay has gone; the HUD shows a **SLIPSTREAM** tag above the
+  turbo meter while the player is towed.
+* The UI's text uses gfx's glyph table (`gfx_font5x7`) instead of a copy.

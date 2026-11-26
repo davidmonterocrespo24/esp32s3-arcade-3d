@@ -1,38 +1,50 @@
-# ESP32 Pseudo-3D Racing Game
+# ARCADE 3D — a pseudo-3D racing game for the ESP32-S3
 
-An arcade-style pseudo-3D racing game for the ESP32-S3 microcontroller with an ILI9341 320×240 SPI display. The same source compiles for the ESP32 hardware and for the PC (a Raylib emulator and a headless renderer).
+An arcade racer in the spirit of the 80s and 90s classics for the ESP32-S3 with an ILI9341 320×240 SPI display:
+three circuits, five rivals, a Grand Prix, a countdown with start lights, procedural textures and a day that
+turns into night while you race. The same source compiles for the ESP32 hardware and for the PC (a Raylib
+emulator and a headless renderer).
 
 ---
 
 ## Screenshots
 
-### Video Demo
+Real frames from the game (headless PC build, the same pixels the panel receives):
 
-![Game Demo](img/game.gif)
+**Neon City** — downtown at dusk, into the night
 
-### Images
+![Neon City](wiki/img/circuit-neon-city.png)
+
+**Sunset Coast** — the seaside highway into the sunset
+
+![Sunset Coast](wiki/img/circuit-sunset-coast.png)
+
+**Alpine Pass** — hairpins, snow and tunnels at dawn
+
+![Alpine Pass](wiki/img/circuit-alpine-pass.png)
+
+![Title, circuit select, results, champion](wiki/img/game-screens.png)
+
+The hardware (the handheld also runs the owner's MGS and SOTN ports) and a video of the original version:
 
 <img src="img/hardesp32.png" alt="ESP32 Hardware" >
 
-![Game Screenshot 1](img/Captura%20de%20pantalla%202026-02-13%20112753.png)
-
-![Game Screenshot 2](img/Captura%20de%20pantalla%202026-02-13%20112759.png)
-
-![Game Screenshot 3](img/image.png)
+![Original version](img/game.gif)
 
 ---
 
 ## Features
 
-- **A real race** — title, main menu, **Grand Prix** (3 circuits in a row, points 10-7-5-3-2-1, standings, champion) or **quick race** on any circuit, grid + **3-2-1-GO countdown** with start lights, 3 laps against **5 rivals**, finish, results with times and best laps, pause menu, attract demo, saved records
-- **Three circuits** — *Neon City* (downtown at dusk turning into night: buildings, sidewalks, zebra crossings, street lamps, an underpass), *Sunset Coast* (beach and sea, sea walls with guard rails, palms, villas, rocky headlands, a tunnel), *Alpine Pass* (rock walls, guard rails, snowy pines, two tunnels, hairpins, steep climbs) — generated from fixed seeds, each with its own palette tint, background and minimap
-- **Rivals** — the player's textured mesh repainted, seen from their real angle, yawed by their motion, brake lights; they follow a racing line, keep a gap, overtake on the free side and share the player's car physics (difficulty EASY / NORMAL / HARD)
-- **Pseudo-3D road** — per-scanline road with anti-aliased edges, ground materials (grass, sidewalk + kerb, beach + sea, water, rock, snow, dirt), lane dashes, per-scanline exponential fog
-- **Software renderer** — own RGB565 framebuffer and rasterizer (`gfx.cpp`): gap-free polygons, alpha blending, additive lights, dithered gradients, bitmap font
-- **3D cars** — OBJ mesh, perspective-correct texture mapping, smoothed normals with Gouraud diffuse + specular + sky reflection, contact shadow, tail/brake lights, turbo flame
-- **Day / night** — the time of day moves with race progress (each circuit has its own start and end), smooth palette blending of sky, sun/moon, stars, clouds, windows, lamps, headlights
-- **Physics** — frame-rate independent acceleration, braking, turbo, centrifugal drift, hill gravity, off-road drag per material, solid walls / rails / tunnel walls / scenery, bumps with rivals, crash and reset
-- **HUD** — position, lap, race time, best lap, lap bar with a dot per car, minimap, turbo meter, speedometer, FPS counter
+- **A real race** — title, main menu, **Grand Prix** (3 circuits in a row, points 10-7-5-3-2-1, standings, champion) or **quick race** on any circuit, grid + five start lights and **3-2-1-GO**, 3 laps against **5 rivals**, finish, results with gaps and best laps, pause (resume / restart / quit), attract demo, difficulty EASY / NORMAL / HARD, saved records and GP wins
+- **Three designed circuits** — *Neon City* (towers, offices, brick and sandstone blocks, shops with neon, zebra crossings, traffic lights, an underpass, the harbour), *Sunset Coast* (beaches, a promenade of villas, sea walls, cliffs, a lighthouse, a tunnel through the headland), *Alpine Pass* (switchback hairpins under rock walls, rails over the drop, forests, a snowy high road, a lake, two tunnels); each has its own palette through its time of day, a background, 30+ kinds of scenery and a minimap that is its true plan
+- **Rivals that race** — the player's car repainted, drawn exactly like it; each follows a racing line with its own personality, keeps a gap, overtakes on the side with room and never steers into a car alongside; bumps instead of crashes, slipstream, turbo, brake and tail lights
+- **Procedural textures** — generated at boot from code, no image files: concrete, glass, brick, sandstone, dark towers, shopfronts, villas, rock, retaining walls, tunnel linings, asphalt with patches and cracks, pavements, sand, animated water, snow; windows light up one by one at dusk
+- **Pseudo-3D road** — anti-aliased per-scanline road, textured near rows fading into flat bands, ground materials, kerbs, markings, start gantry, guard rails, street lamps, tunnels with portals, per-row fog
+- **3D cars** — OBJ mesh, perspective-correct texture mapping, smoothed normals with diffuse + specular + sky reflection, contact shadow, lights, turbo flame, three levels of detail
+- **Day / night** — the time of day follows race progress (each circuit has its own range): sky, sun / moon and its glitter on the sea, stars, clouds, lit windows, lamps, headlights
+- **Physics** — frame-rate independent engine model, braking, turbo and rocket start, centrifugal drift, hill gravity, drag per ground material, solid walls / rails / tunnel walls / scenery, bumps between all cars, crash and reset
+- **HUD** — position and lap, gap to the car ahead, race / last / best lap times, minimap with every car, speed dial, turbo meter, slipstream tag, position-change and lap banners, FPS counter
+- **ESP32-S3 engine** — own software renderer into an internal-SRAM framebuffer, SPI DMA scanout on core 0 (from the MGS / SOTN ports), raster loops in IRAM, big buffers in PSRAM
 
 ---
 
@@ -57,7 +69,7 @@ Two boards are supported; pick one in `board.h` (`BOARD`).
 3. **Tools → USB CDC On Boot → Enabled** (mandatory on the XIAO: GPIO43 is the panel's D/C line, and with CDC disabled `Serial` would take it)
 4. Compile and upload. **No TFT_eSPI library is needed**: the panel is driven with ESP-IDF's `esp_lcd` SPI + DMA.
 
-The serial monitor prints where each buffer was placed (`[mem] ...`, `gfx: ... framebuffer in internal SRAM`).
+The serial monitor prints where each buffer was placed (`[mem] ...`, `gfx: ... framebuffer in internal SRAM`, `tex: ...`), whether the raster loops are in IRAM (`iram: ... yes`) and, once per second, the frame rate and the free memory (`[st] ...`).
 
 ---
 
@@ -66,12 +78,13 @@ The serial monitor prints where each buffer was placed (`[mem] ...`, `gfx: ... f
 | Action | Handheld | Dev board | Emulator |
 | ------ | -------- | --------- | -------- |
 | Steer | Stick X | GPIO 17 / 16 buttons | ← / → |
-| Menu up / down | Stick Y | left / right | ↑ / ↓ |
-| Brake | A (D5) | — | ↓ or Space |
-| Turbo | B (D7) | — | X or Left Shift |
+| Menu up / down | Stick Y | one button (on release) | ↑ / ↓ |
+| Change a value / the circuit | Stick X | (confirm cycles values) | ← / → |
+| Brake | A (D5) | — | Space or ↓ |
+| Turbo (press it just as the lights go green for a rocket start) | B (D7) | — | X or Left Shift |
 | Confirm | START, B or CROSS (ladder) | both buttons | Enter |
-| Back | SELECT or CIRCLE (ladder) | — | Esc / Backspace |
-| Pause | START | both buttons | Enter |
+| Back | SELECT or CIRCLE (ladder) | — (every menu has BACK) | Esc / Backspace |
+| Pause | START | both buttons held 250 ms | Enter or P |
 | Throttle | Automatic | Automatic | Automatic |
 
 Every menu has an explicit BACK item, so the dev board (steer + both buttons) can use all of them.
@@ -103,12 +116,15 @@ Runs the game on a virtual 30 Hz clock and writes frames as PPM images — used 
 cd emulator/
 make headless
 ./car_game_headless out 900 --race 0 --auto --dump 300 200 400     # race on Neon City, autopilot
-./car_game_headless out 13500 --gp --auto                         # a whole Grand Prix
-./car_game_headless out 60 --race 2 --nocd --cycle 2.3 --pos 120000 50
+./car_game_headless out 11000 --gp --auto                         # a whole Grand Prix
+./car_game_headless out 60 --state RESULTS:1 50                   # jump to a screen
+./car_game_headless out 46 --race 2 --nocd --cycle 3.6 --pos 40000 --in 0:46:brake 45
 python tools/sheet.py sheet.png 1 out/frame_0200.ppm out/frame_0400.ppm
+bash tools/balance.sh            # autopilot vs rivals on every circuit and difficulty
+bash tools/check_circuits.sh     # circuit rules and determinism
 ```
 
-All options (`--race`, `--nocd`, `--gp`, `--auto`, `--diff`, `--cycle`, `--pos`, `--in`, `--dump`, `--every`, `--title`, `--save`, `--segs`) are documented in [wiki/10-game-architecture.md](wiki/10-game-architecture.md).
+All options and test recipes are in [wiki/10-game-architecture.md](wiki/10-game-architecture.md).
 
 ---
 
@@ -116,35 +132,36 @@ All options (`--race`, `--nocd`, `--gp`, `--auto`, `--diff`, `--cycle`, `--pos`,
 
 ```text
 ├── car_game.ino            # setup() -> game_setup(), loop() -> game_loop()
-├── game.cpp/.h             # State machine: title, menus, GP, countdown, race, results
-├── ui.cpp/.h               # Title, menus, circuit select, countdown, results, pause, banners
-├── render_hud.cpp/.h       # Race HUD (position, lap, times, minimap, speedometer)
+├── game.cpp/.h             # State machine: title, menus, GP, countdown, race, pause, results, demo
+├── ui.cpp/.h               # UI toolkit and every screen: title, menus, select, countdown, banners, results
+├── render_hud.cpp/.h       # Race HUD (position, lap, gap, times, minimap, speed dial, turbo)
 ├── save.cpp/.h             # Records and GP wins (NVS on the ESP32, a file on the PC)
 ├── race.cpp/.h             # Racers, grid, progress, laps, places, results
-├── rivals.cpp/.h           # Rival AI (racing line, gaps, overtaking)
-├── physics.cpp/.h          # Player car physics, bumps, walls, turbo, autopilot, crash
-├── circuits.cpp/.h         # The three circuits (layout generator + themes) and minimap
+├── rivals.cpp/.h           # Rival AI: racing line, speed profile, personalities, overtaking
+├── physics.cpp/.h          # Car physics, contacts, walls, turbo, slipstream, autopilot, crash
+├── circuits.cpp/.h         # The three designed circuits, decoration, minimap
 ├── track.cpp/.h            # Segment buffer and low-level builders
 ├── structs.h               # Segment (20 B), ground materials, building types, flags
 ├── config.h                # Shared constants (screen, world, lateral limits)
-├── colors.cpp/.h           # RGB565 helpers, day/sunset/night/dawn palettes, themes
+├── colors.cpp/.h           # RGB565 helpers, day/sunset/night/dawn palettes per theme
 ├── rendering.cpp/.h        # Sky, sun/moon, stars, clouds, theme backgrounds
-├── render_road.cpp/.h      # Road pass: ground, tunnels, buildings, rails, lamps, cars
-├── render_building.cpp/.h  # Buildings, villas, cliffs, walls
-├── render_scenery.cpp/.h   # Trees, palms, rocks, posts (+ collision widths)
-├── render_cars.cpp/.h      # Rivals in the road pass
-├── render_traffic.cpp/.h   # One car at a road-projected position (mesh + LOD)
+├── textures.cpp/.h         # Procedural textures: facades, ground, tunnels, banners
+├── render_road.cpp/.h      # Road pass: textured ground, markings, gantry, rails, lamps, tunnels, cars
+├── render_building.cpp/.h  # Textured buildings of every type, villas, cliffs, walls
+├── render_scenery.cpp/.h   # 33 sprite types with LODs (+ footprints and collision widths)
+├── render_cars.cpp/.h      # Rivals in the road pass (camera blend, culling, LOD)
+├── render_traffic.cpp/.h   # One car seen from a blended camera
 ├── render_player.cpp/.h    # Textured 3D car renderer and the player's car
-├── gfx.cpp/.h              # Software framebuffer, rasterizer, font
+├── gfx.cpp/.h              # Software framebuffer, rasterizer, textured spans, font
 ├── display.h, display_esp32.cpp   # ILI9341 over SPI DMA, scanout task on core 0
-├── input.h, input_esp32.cpp       # Stick, buttons, resistor ladder
-├── platform.h, platform_esp32.cpp # IRAM/allocation/logging/save helpers
+├── input.h, input_esp32.cpp       # Stick, buttons, resistor ladder (ADC task)
+├── platform.h, platform_esp32.cpp # IRAM/allocation/logging/status/save helpers
 ├── board.h                 # Pin maps: XIAO handheld / original dev board
 ├── utils.cpp/.h            # Math helpers, deterministic Rng
 ├── car2_mesh.h, car2_texture.h    # Generated assets
 ├── assets/                 # Car2.obj, car2.png, generators
-├── wiki/                   # Design notes; 10-game-architecture.md is the module contract
-└── emulator/               # Raylib + headless frontends, tools/sheet.py
+├── wiki/                   # Documentation; 10-game-architecture.md is the module contract
+└── emulator/               # Raylib + headless frontends, tools/ (sheets, balance, checks)
 ```
 
 ---
@@ -154,13 +171,17 @@ All options (`--race`, `--nocd`, `--gp`, `--auto`, `--diff`, `--cycle`, `--pos`,
 | Buffer | Where | Size | Why |
 | ------ | ----- | ---- | --- |
 | Framebuffer | internal SRAM | 150 KB | every fill writes here; no cache traffic |
-| Car texture copy | internal SRAM | 32 KB | random texel reads; flash/PSRAM share the cache |
+| Procedural textures | internal SRAM (PSRAM fallback) | 23 KB | read per pixel by the wall / road loops |
+| Car texture | internal SRAM | 16 KB | 8-bit indices into an exact palette, random texel reads |
 | DMA bands ×2 | internal, DMA-capable | 2×5 KB | ping-pong SPI transfers |
 | Track segments | PSRAM | 48 KB | 2400 × 20-byte segments, touched ~200 times a frame |
-| Scanout snapshots ×2 | PSRAM | 2×150 KB | immutable copy for the panel, written once per frame |
-| Mesh, palettes, font | flash | ~45 KB | read-only |
+| Racing line + speed profile | PSRAM | 19 KB | read a few times per car per frame |
+| Scanout snapshots ×2, pause snapshot | PSRAM | 3×150 KB | immutable frame copies |
+| Mesh, texture source, palettes, font | flash | ~60 KB | read-only |
 
-Hot raster loops are placed in IRAM (`HOT`), and the scanout runs on core 0 while the game runs on core 1 — the same split used in the MGS/SOTN ports.
+Hot raster loops are placed in IRAM (`HOT`) and the scanout runs on core 0 while the game runs on core 1 — the
+same split as in the MGS/SOTN ports. Every placement is logged at boot; the full map is in
+[wiki/10-game-architecture.md](wiki/10-game-architecture.md#108-memory-map-esp32-s3-8-mb-octal-psram).
 
 ---
 

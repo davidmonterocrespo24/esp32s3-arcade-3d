@@ -76,6 +76,11 @@ static float    sDepth[car2_tri_count];   // their depth keys
 static uint8_t  sBucket[car2_tri_count];
 static uint16_t sPaintLUT[64];
 
+// Rasterizer (below), forward declared for the boot IRAM check. No HOT here:
+// IRAM_ATTR names a unique section per use, so it goes on the definition only.
+struct RV;
+static void rasterTri(const RV* p0, const RV* p1, const RV* p2, bool usePaint);
+
 static size_t internalFree() {
 #if PLATFORM_ESP32
   return heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -122,6 +127,7 @@ void initCarRenderer() {
   }
   plat_log("car: texture %dx%d as %d-colour indices (%u B) in %s%s\n", TEX_W, TEX_H, nPal,
            (unsigned)bytes, internal ? "internal SRAM" : "PSRAM", inexact ? " (approximated)" : "");
+  plat_log_iram("rasterTri", (const void*)rasterTri);
 
   // ---- mesh: copy to internal RAM only if a comfortable reserve remains ----
   const size_t vb = sizeof(Car2Vertex) * car2_vert_count;

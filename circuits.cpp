@@ -442,6 +442,15 @@ static bool forceSprite(int i, int side, int type, float dist) {
 
 // One row of a district's building table: type, height range (BUILDING_H_UNIT
 // steps) and the weight of the random choice.
+//
+// Heights are tuned for the textured building renderer, which draws them
+// BLD_V_SCALE (3x) tall with a floor of BUILDING_FLOOR_H (about 1/10 of a
+// street lamp): city towers of 170-255 units leave the top of the screen,
+// shops of 40-80 are a lamp tall. Villas use 3x floors (VILLA_FLOOR_K in
+// render_building.cpp): 32-52 units are two to three storeys under a
+// pitched roof. Rock faces stay low enough (50-125) for the background
+// ranges to show above them; tunnel mouths (110-140) reach the top of the
+// portal's rock face (TUNNEL_H * 2.3 = 126 units).
 struct BldPick { uint8_t type, hMin, hMax, weight; };
 
 static int pickWeighted(const BldPick* t, int n) {
@@ -727,7 +736,7 @@ static void decorateCoast() {
     const int i0 = sSecStart[k], i1 = sSecStart[k + 1];
     switch (z) {
       case KZ_TOWN: {        // villas along the promenade, lamps, palms between
-        static const BldPick T[] = { { BLD_VILLA, 60, 95, 1 } };
+        static const BldPick T[] = { { BLD_VILLA, 34, 50, 1 } };
         for (int i = i0; i < i1;) {
           int len = sRng.range(5, 9), gap = sRng.range(2, 5);
           int h = sRng.range(T[0].hMin, T[0].hMax + 1), v = sRng.range(0, 16);
@@ -778,7 +787,7 @@ static void decorateCoast() {
             sinceCove = 0;
             continue;
           }
-          int len = sRng.range(6, 14), h = sRng.range(130, 230), v = sRng.range(0, 16);
+          int len = sRng.range(6, 14), h = sRng.range(55, 100), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_CLIFF, h, v);
           sinceCove += len;
         }
@@ -788,7 +797,7 @@ static void decorateCoast() {
       }
       case KZ_CAPE:
         for (int i = i0; i < i1;) {
-          int len = sRng.range(5, 12), h = sRng.range(150, 255), v = sRng.range(0, 16);
+          int len = sRng.range(5, 12), h = sRng.range(65, 110), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_CLIFF, h, v);
         }
         for (int i = i0; i < i1; i++) {
@@ -798,7 +807,7 @@ static void decorateCoast() {
         break;
       case KZ_LIGHTHOUSE: {
         for (int i = i0; i < i1;) {
-          int len = sRng.range(5, 12), h = sRng.range(120, 220), v = sRng.range(0, 16);
+          int len = sRng.range(5, 12), h = sRng.range(50, 95), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_CLIFF, h, v);
         }
         forceSprite(i0 - 3, 0, SPR_LIGHTHOUSE, 2.5f);      // on the point, seen all along the approach
@@ -811,7 +820,7 @@ static void decorateCoast() {
       case KZ_VILLAGE:
         for (int i = i0; i < i1;) {
           int len = sRng.range(5, 8), gap = sRng.range(2, 6);
-          int h = sRng.range(55, 100), v = sRng.range(0, 16);
+          int h = sRng.range(32, 52), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_VILLA, h, v);
           for (int j = 0; j < gap && i < i1; j++, i++) {
             if (j == 0) placeSprite(i, 1, SPR_CYPRESS, 1.36f);
@@ -845,7 +854,7 @@ static void decorateCoast() {
       default: break;
     }
   }
-  dressTunnelMouths(BLD_CLIFF, 170, 255, 14);
+  dressTunnelMouths(BLD_CLIFF, 110, 135, 14);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -880,7 +889,7 @@ static void decorateMountain() {
     if (z == MZ_WALL_L || z == MZ_WALL_R) {        // the rock face
       const int side = z == MZ_WALL_L ? 0 : 1;
       for (int i = i0; i < i1;) {
-        int len = sRng.range(4, 10), h = sRng.range(170, 255), v = sRng.range(0, 16);
+        int len = sRng.range(4, 10), h = sRng.range(75, 125), v = sRng.range(0, 16);
         for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, side, BLD_CLIFF, h, v);
       }
     }
@@ -936,7 +945,7 @@ static void decorateMountain() {
       }
     }
   }
-  dressTunnelMouths(BLD_CLIFF, 190, 255, 14);
+  dressTunnelMouths(BLD_CLIFF, 115, 140, 14);
 }
 
 // ═══════════════════════════════════════════════════════════════

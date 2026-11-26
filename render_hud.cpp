@@ -141,6 +141,23 @@ static void drawTurbo(int x, int y, float timeSec) {
   if (boosting) gfx_glow(bx + SEG * (sw + gap) / 2, y + 3, 26, UI_ACCENT2, 10);
 }
 
+// Slipstream (physics `draft`, 0..1: towed behind a car in the same lane,
+// up to +3.5 % top speed): a tag above the turbo meter, fading in with it
+static void drawSlipstream(int x, int y, float timeSec) {
+  if (draft < 0.25f || !raceRunning || racers[PLAYER_ID].finished) return;
+  const int a = iclamp((int)((draft - 0.25f) / 0.35f * 32.0f), 0, 32);
+  if (a < 4) return;
+  const char* txt = "SLIPSTREAM";
+  const int w = ui_textWidth(txt, 1) + 14;
+  if (a > 12) ui_shadeRect(x - 2, y - 2, w + 2, 11, 16);
+  const float pulse = 0.5f + 0.5f * sinf(timeSec * 10.0f);
+  ui_arrow(x + 4, y + 3, 3, 0, lerpCol(UI_ACCENT2, COL_WHITE, pulse));
+  UiTextStyle s = ui_style(1, UI_ACCENT2);
+  s.outlinePx = 0;
+  s.alpha = (uint8_t)a;
+  ui_text((float)(x + 11), (float)y, txt, s, UI_LEFT);
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  POSITION, LAP, GAP
 // ═══════════════════════════════════════════════════════════════
@@ -275,6 +292,7 @@ void drawHUD(float timeSec, float fps, float lcdFps, float frameMs) {
 
   // speed + turbo, bottom right
   drawTurbo(SCR_W - 86, SCR_H - 86, timeSec);
+  drawSlipstream(SCR_W - 86, SCR_H - 99, timeSec);
   drawSpeedometer(SCR_W - 44, SCR_H - 42, speed, maxSpeed);
 
   if (autopilot && game_state() != GS_DEMO) {   // the AI drives (finish cool-down, --auto): top centre

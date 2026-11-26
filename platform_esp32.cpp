@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
 #include "platform.h"
 
 void* plat_alloc_internal(size_t bytes) {
@@ -67,6 +68,10 @@ static void failedAlloc(size_t size, uint32_t caps, const char* fn) {
 
 void plat_init() {
   heap_caps_register_failed_alloc_callback(failedAlloc);
+}
+
+void plat_log_iram(const char* name, const void* fn) {
+  plat_log("iram: %-18s %s\n", name, esp_ptr_in_iram(fn) ? "yes" : "NO (flash)");
 }
 
 void plat_status(float fps, float frameMs, float lcdFps) {

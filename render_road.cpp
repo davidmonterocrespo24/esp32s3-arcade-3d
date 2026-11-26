@@ -1,6 +1,6 @@
 /*
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  ROAD PASS â€” implementation
+  ═══════════════════════════════════════════════════════════════
+  ROAD PASS — implementation
 
   Pass 1 (front to back): project every segment boundary once and
   record, per segment, the screen row below which nearer road already
@@ -18,7 +18,7 @@
   textures (asphalt, pavement + kerb, grass, sand, water, rock, snow,
   dirt) through a per-row mip level, so they fade into the flat bands
   with distance instead of shimmering.
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  ═══════════════════════════════════════════════════════════════
 */
 
 #pragma GCC optimize("O2")
@@ -36,6 +36,7 @@
 #include "rendering.h"        // skyOffset: the sun glitter column follows the sun
 #include "race.h"
 #include "game.h"
+#include "ui.h"               // start-light state of the countdown (gantry)
 #include "utils.h"
 #include <math.h>
 #include <string.h>
@@ -110,9 +111,9 @@ static inline int colOf(float x) {
 
 static inline void project(ProjPt& p, float wx, float wy, float wz) { roadProject(p, wx, wy, wz); }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 //  ROAD ROWS: region specs
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // Texture source of a region (0 = flat colour)
 enum TexKind : uint8_t {
   TK_NONE = 0, TK_ROAD, TK_PAVE_L, TK_PAVE_R, TK_GND_L, TK_GND_R, TK_WATER_L, TK_WATER_R,
@@ -245,9 +246,9 @@ static void buildSpec(BandSpec& S, const Segment& seg, int sIdx, int variant) {
   for (int i = 1; i < R.n; i++) addB(S, R.u[i - 1], R.c[i], R.k[i], R.sea[i]);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 //  ROAD ROWS: texture sources
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 struct KindSrc {
   const RowTex* T;
   float K;              // texels per road half-width
@@ -541,9 +542,9 @@ static void drawFarGround(int groundEnd, int lastValid, int baseIdx) {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 //  TUNNEL
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 static inline float ceilY(const ProjPt& p, float worldY) {
   return SCR_CY - p.scale * (worldY + TUNNEL_H - roadCam.camY) * SCR_CY;
 }
@@ -759,9 +760,9 @@ static void drawPortal(const SegView& s, int sIdx) {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 //  ROADSIDE: lamps, guard rails, start gantry
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // Street lamp on one side of the road, with its light at night.
 static void drawLamp(const ProjPt& p, int side, float fog) {
   float sc = p.scale;
@@ -892,29 +893,32 @@ static void drawGantry(const ProjPt& p, float fog) {
     if (pal.night > 0.3f)   // floodlit at night
       gfx_fillQuad(lx, yt, rx, yt, rx, yb, lx, yb, pal.lampLight, GFX_ADD, (int)(6 * pal.night * (1 - fog)));
   }
-  // start lights on top of the truss
+  // start lights on top of the truss: the same five lights, in the same
+  // state, as the countdown gantry of the UI (ui_countdownLightMask)
   {
-    int lit = 0;
+    float lt = -1.0f;                     // seconds since the countdown began
+    const GameState gs = game_state();
+    if (gs == GS_COUNTDOWN || gs == GS_DEMO) lt = game_stateTime();
+    else if (raceRunning && racers[PLAYER_ID].lap == 0) lt = UI_COUNTDOWN_GO + raceTime;
     bool green = false;
-    GameState gs = game_state();
-    if (gs == GS_COUNTDOWN) lit = imin((int)game_stateTime(), 3);
-    else if (raceRunning && raceTime < 2.5f && racers[PLAYER_ID].lap == 0) green = true;
-    const float r = fmaxF(1.0f, sc * 120.0f * SCR_CX);
+    const int mask = lt >= 0.0f ? ui_countdownLightMask(lt, &green) : 0;
+    const float r = fmaxF(1.0f, sc * 100.0f * SCR_CX);
     const float ly = ytt - r * 1.4f;
-    gfx_fillQuad(p.x - r * 5.2f, ly - r * 1.4f, p.x + r * 5.2f, ly - r * 1.4f, p.x + r * 5.2f, ytt,
-                 p.x - r * 5.2f, ytt, fogF(rgb(26, 26, 30), fog));
-    for (int i = 0; i < 3; i++) {
-      float cx = p.x + (i - 1) * r * 3.2f;
-      uint16_t c = green ? rgb(40, 255, 80) : (i < lit ? rgb(255, 40, 30) : rgb(70, 16, 16));
+    gfx_fillQuad(p.x - r * 6.6f, ly - r * 1.4f, p.x + r * 6.6f, ly - r * 1.4f, p.x + r * 6.6f, ytt,
+                 p.x - r * 6.6f, ytt, fogF(rgb(26, 26, 30), fog));
+    for (int i = 0; i < 5; i++) {
+      const float cx = p.x + (i - 2) * r * 2.6f;
+      const bool on = green || ((mask >> i) & 1);
+      const uint16_t c = green ? rgb(40, 255, 80) : (on ? rgb(255, 40, 30) : rgb(70, 16, 16));
       gfx_fillCircle((int)cx, (int)ly, (int)fmaxF(1.0f, r), fogF(c, fog * 0.5f));
-      if (green || i < lit) gfx_glow((int)cx, (int)ly, (int)fmaxF(3.0f, r * 3.0f), c, 20);
+      if (on) gfx_glow((int)cx, (int)ly, (int)fmaxF(3.0f, r * 3.0f), c, 20);
     }
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 //  MAIN PASS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 void drawRoad(float position, float playerX, float playerZdist, float cameraDepth) {
   if (!sFogInit) initFog();
   if (segCount <= 0) return;
@@ -924,9 +928,7 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
   sTime = millis() * 0.001f;
   // the sun / moon glitter column follows drawSky's sun position
   {
-    int sx = (SCR_W - (int)(skyOffset * 0.25f) - 40) % 640;
-    if (sx < 0) sx += 640;
-    sSunX = sx - 160;
+    sSunX = sky_sunX(skyOffset);
     float low = clampF((pal.sunY - 20.0f) / 80.0f, 0.0f, 1.0f);
     sGlint = (sSunX > -40 && sSunX < SCR_W + 40) ? 0.30f + 0.70f * low : 0.0f;
     if (pal.night > 0.6f) sGlint *= 0.6f;
@@ -1015,6 +1017,11 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
       if (seg.flags & SEGF_RAIL_R) drawRail(s, +1, sIdx);
     }
 
+    // Cars of this slice stand at or beyond its near boundary, while the
+    // sprites, lamps and the gantry stand ON that boundary: draw the cars
+    // first so a tree or lamp at the near edge covers a car behind it.
+    cars_drawSlice(n, s.fog, tunnel);
+
     if (n >= 1 && s.n.z > NEAR_Z) {
       for (int side = 0; side < 2; side++) {
         if (seg.spr[side] < 0) continue;
@@ -1025,8 +1032,6 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
       if (seg.flags & SEGF_LAMP_R) drawLamp(s.n, +1, s.fog);
       if (seg.flags & SEGF_START) drawGantry(s.n, s.fog);
     }
-
-    cars_drawSlice(n, s.fog, tunnel);
 
     if (tunnel && !prevSeg.isTunnel() && n >= 1) drawPortal(s, sIdx);
   }
