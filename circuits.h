@@ -1,10 +1,13 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  CIRCUITS — three themed tracks generated from fixed seeds
-  buildCircuit(id) fills the segment buffer (layout, flags, ground
-  materials, buildings, scenery), builds the minimap and switches the
-  palette theme and the background. Deterministic: a circuit is the
-  same every time it is built.
+  CIRCUITS — three designed, themed tracks
+  Each layout is an explicit list of sections (straights and corners
+  given by their turn angle) that closes exactly in the plan; zones per
+  section are decorated from a fixed seed. buildCircuit(id) fills the
+  segment buffer (layout, elevation, flags, ground materials, buildings,
+  scenery), builds the minimap and switches the palette theme and the
+  background. Deterministic: a circuit is the same every time it is
+  built, in any order. See wiki/13-circuits-and-themes.md.
   ═══════════════════════════════════════════════════════════════
 */
 

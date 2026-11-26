@@ -72,6 +72,13 @@ enum FacadeColor : uint8_t {
   FAC_CREAM, FAC_RUST, FAC_STUCCO, FAC_TERRACOTTA, FAC_ROCK, FAC_WALLGREY,
   BUILDING_PALETTE };
 
+// Materials of the scenery props (sprites), lit by the palette's sun /
+// moon and ambient light (no fog: the sprite fogs them per depth)
+enum PropColor : uint8_t {
+  PC_WHITE = 0, PC_RED, PC_YELLOW, PC_BLACK, PC_METAL, PC_DARKMETAL, PC_WOOD, PC_DARKWOOD,
+  PC_CONCRETE, PC_GLASS, PC_ORANGE, PC_BLUE, PC_GREEN, PC_STONE, PC_SAND, PC_PURPLE,
+  PROP_PALETTE };
+
 struct ColorSet {
   uint16_t skyTop, skyMid, skyHorizon, fog;
   uint16_t grassL, grassD, roadL, roadD;
@@ -87,6 +94,10 @@ struct ColorSet {
   uint16_t facadeShade[BUILDING_PALETTE]; // face away from the sun
   uint16_t facadeFront[BUILDING_PALETTE]; // face towards the camera
   uint16_t roof[BUILDING_PALETTE];
+  uint16_t prop[PROP_PALETTE];            // lit prop materials (PropColor)
+  uint16_t water, waterDeep, seaGlint;    // sea / lake surface (background + ground), sun glitter
+  uint16_t skylineMid;                    // middle background layer (between far and near)
+  uint16_t snowCap;                       // snow on the background ranges
   // Lighting for the 3D cars, linear 0..1 per channel
   float lightR, lightG, lightB;     // directional (sun/moon) colour
   float ambR, ambG, ambB;           // ambient colour

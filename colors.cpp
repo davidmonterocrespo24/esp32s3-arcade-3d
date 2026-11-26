@@ -118,29 +118,106 @@ static const RGB8 FACADES[BUILDING_PALETTE] = {
   {146, 144, 138}  // retaining wall grey
 };
 
+// ═══════════════════════════════════════════════════════════════
+//  THEMES
+//  Each circuit theme replaces the sky, the haze, the sun glow, the
+//  clouds and the three background layers of the four base palettes
+//  (blended with the same smoothstep, so the day/night cycle stays
+//  smooth), and brings its own ground materials and plant tints.
+// ═══════════════════════════════════════════════════════════════
+struct ThemeSky {
+  RGB8 skyTop, skyMid, skyHorizon, fog;
+  RGB8 sunGlow, cloud;
+  RGB8 far, mid, nearL;          // background layers, far -> near
+};
+
+// [theme][phase]: phase 0 day, 1 sunset, 2 night, 3 dawn
+static const ThemeSky THEME_SKY[3][4] = {
+  { // NEON CITY: urban haze by day, magenta dusk, purple light-polluted night
+    { {64, 124, 214}, {132, 174, 232}, {206, 220, 238}, {190, 198, 214},
+      {255, 236, 170}, {255, 255, 255}, {156, 170, 196}, {118, 130, 160}, {78, 88, 112} },
+    { {34, 24, 84}, {168, 60, 120}, {255, 138, 92}, {214, 120, 118},
+      {255, 104, 72}, {255, 140, 130}, {150, 82, 124}, {98, 48, 98}, {52, 28, 68} },
+    { {4, 4, 20}, {20, 16, 54}, {74, 40, 96}, {40, 28, 66},
+      {110, 120, 200}, {58, 46, 92}, {38, 30, 72}, {24, 18, 50}, {12, 10, 30} },
+    { {60, 78, 150}, {196, 146, 178}, {255, 198, 160}, {226, 188, 180},
+      {255, 180, 150}, {255, 212, 212}, {170, 150, 180}, {124, 108, 146}, {84, 74, 108} },
+  },
+  { // SUNSET COAST: deep Mediterranean blue, golden sunset, clear night
+    { {30, 104, 214}, {92, 166, 238}, {204, 230, 250}, {196, 222, 240},
+      {255, 240, 180}, {255, 255, 255}, {136, 164, 196}, {100, 132, 130}, {72, 104, 86} },
+    { {44, 48, 118}, {214, 106, 96}, {255, 184, 92}, {246, 166, 112},
+      {255, 122, 48}, {255, 166, 120}, {170, 106, 124}, {120, 72, 90}, {80, 48, 64} },
+    { {4, 8, 28}, {14, 24, 62}, {38, 48, 94}, {26, 34, 64},
+      {110, 122, 200}, {40, 46, 82}, {30, 36, 64}, {20, 26, 48}, {12, 16, 32} },
+    { {62, 82, 152}, {202, 150, 180}, {255, 202, 162}, {232, 194, 182},
+      {255, 180, 150}, {255, 212, 212}, {172, 150, 184}, {126, 110, 140}, {86, 80, 104} },
+  },
+  { // ALPINE PASS: cold violet dawn, crisp blue day, blue ranges
+    { {24, 84, 204}, {96, 156, 238}, {196, 222, 250}, {198, 216, 236},
+      {255, 246, 200}, {255, 255, 255}, {150, 170, 208}, {100, 122, 160}, {44, 76, 64} },
+    { {40, 36, 104}, {190, 90, 120}, {255, 164, 92}, {232, 150, 110},
+      {255, 112, 60}, {255, 150, 130}, {156, 98, 128}, {104, 64, 100}, {46, 40, 54} },
+    { {2, 6, 22}, {10, 18, 50}, {34, 42, 84}, {22, 28, 56},
+      {110, 122, 200}, {34, 40, 72}, {30, 36, 66}, {20, 26, 48}, {8, 14, 20} },
+    { {52, 70, 150}, {180, 140, 190}, {255, 194, 170}, {218, 190, 200},
+      {255, 170, 150}, {255, 206, 214}, {168, 140, 186}, {118, 100, 146}, {50, 56, 72} },
+  },
+};
+
 // Ground materials in daylight (light band, dark band). Other times of day
 // are derived with the road's day -> phase ratio, so they darken and tint
-// exactly like the tarmac next to them. MAT_GRASS uses the hand-tuned grass.
-static const RGB8 GROUND_DAY[MAT_COUNT][2] = {
-  { {54, 166, 50},   {38, 140, 38} },    // grass (replaced by the palette grass)
-  { {178, 174, 166}, {164, 160, 152} },  // sidewalk slabs
-  { {228, 208, 158}, {216, 196, 146} },  // sand
-  { {44, 118, 182},  {38, 106, 168} },   // water
-  { {128, 120, 110}, {116, 108, 100} },  // rock
-  { {240, 244, 252}, {224, 230, 242} },  // snow
-  { {152, 120, 82},  {138, 108, 74} }    // dirt
+// exactly like the tarmac next to them. MAT_GRASS uses the base palette's
+// hand-tuned grass times the theme tint; water also mirrors the sky.
+struct ThemeGround {
+  RGB8 mat[MAT_COUNT][2];
+  RGB8 kerb[2];
+  float grass[3], foliage[3];
+  float waterSky;                // how much the water mirrors the horizon (0..1)
 };
-static const RGB8 KERB_DAY[2] = { {214, 212, 204}, {132, 130, 126} };
 
-// Per-theme tints (multipliers) for grass, fog and the two skyline layers
-struct ThemeTint { float grass[3], fog[3], far[3], nearL[3]; };
-static const ThemeTint TINTS[3] = {
-  // city: park grass, slightly bluer haze at night
-  { {0.92f, 0.96f, 0.92f}, {0.97f, 0.98f, 1.04f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f} },
-  // coast: dry yellow-green grass, warm haze, bluish islands
-  { {1.12f, 1.00f, 0.72f}, {1.04f, 1.00f, 0.95f}, {0.82f, 0.94f, 1.10f}, {0.80f, 0.92f, 1.06f} },
-  // mountain: deep alpine green, cold haze, blue ranges
-  { {0.78f, 0.94f, 0.86f}, {0.94f, 0.98f, 1.07f}, {0.86f, 0.94f, 1.10f}, {0.80f, 0.90f, 1.00f} }
+static const ThemeGround THEME_GROUND[3] = {
+  { // NEON CITY: grey slabs, a green harbour basin, lush park grass
+    { { {58, 150, 56}, {44, 128, 44} }, { {176, 172, 166}, {160, 156, 150} },
+      { {220, 200, 150}, {208, 188, 140} }, { {40, 98, 124}, {34, 86, 112} },
+      { {128, 124, 118}, {116, 112, 106} }, { {240, 244, 252}, {224, 230, 242} },
+      { {140, 112, 80}, {128, 102, 72} } },
+    { {214, 212, 206}, {124, 122, 118} },
+    { 0.90f, 0.98f, 0.90f }, { 0.95f, 1.00f, 0.95f }, 0.38f },
+  { // SUNSET COAST: golden sand, turquoise sea, dry grass, warm limestone
+    { { {124, 158, 62}, {106, 140, 52} }, { {216, 200, 178}, {200, 184, 162} },
+      { {238, 216, 162}, {226, 204, 150} }, { {30, 136, 178}, {26, 120, 162} },
+      { {178, 152, 120}, {162, 138, 108} }, { {240, 244, 252}, {224, 230, 242} },
+      { {170, 130, 86}, {156, 118, 78} } },
+    { {232, 228, 220}, {176, 92, 70} },
+    { 1.12f, 1.00f, 0.70f }, { 1.08f, 1.00f, 0.72f }, 0.30f },
+  { // ALPINE PASS: alpine meadow, granite, blue-white snow, a dark lake
+    { { {62, 140, 58}, {48, 120, 48} }, { {170, 168, 162}, {156, 154, 148} },
+      { {220, 200, 150}, {208, 188, 140} }, { {36, 100, 134}, {30, 88, 120} },
+      { {130, 130, 134}, {116, 116, 122} }, { {244, 248, 255}, {226, 234, 248} },
+      { {128, 100, 72}, {116, 90, 64} } },
+    { {214, 212, 206}, {124, 122, 118} },
+    { 0.80f, 0.96f, 0.86f }, { 0.78f, 0.92f, 0.86f }, 0.42f },
+};
+
+// Prop materials (PropColor), lit like the facades
+static const RGB8 PROPS[PROP_PALETTE] = {
+  {236, 236, 230}, // white paint
+  {204, 40, 36},   // red
+  {250, 196, 30},  // yellow
+  {28, 28, 32},    // black
+  {156, 160, 166}, // metal
+  {66, 70, 78},    // dark metal
+  {156, 104, 62},  // wood
+  {92, 60, 38},    // dark wood
+  {168, 166, 158}, // concrete
+  {118, 158, 188}, // glass
+  {242, 120, 28},  // orange
+  {36, 88, 200},   // blue
+  {40, 150, 70},   // green
+  {150, 140, 126}, // stone
+  {222, 202, 150}, // sand
+  {150, 70, 190}   // purple
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -190,27 +267,33 @@ void setDayCycle(float cycle) {
   if (t > 1) t = 1;
   t = t * t * (3.0f - 2.0f * t);   // smoothstep
 
-  const Palette& A = PALETTES[phase & 3];
-  const Palette& B = PALETTES[(phase + 1) & 3];
-  const ThemeTint& T = TINTS[colorTheme];
-  timeOfDay = (t < 0.5f) ? (phase & 3) : ((phase + 1) & 3);
+  const int pa = phase & 3, pb = (phase + 1) & 3;
+  const Palette& A = PALETTES[pa];
+  const Palette& B = PALETTES[pb];
+  const int th = (colorTheme >= 0 && colorTheme < 3) ? colorTheme : 0;
+  const ThemeSky& SA = THEME_SKY[th][pa];
+  const ThemeSky& SB = THEME_SKY[th][pb];
+  const ThemeGround& G = THEME_GROUND[th];
+  timeOfDay = (t < 0.5f) ? pa : pb;
 
 #define MIX(f) RGB8 f = lerpRGB(A.f, B.f, t)
-  MIX(skyTop); MIX(skyMid); MIX(skyHorizon); MIX(fog);
+#define TMIX(f, src) RGB8 f = lerpRGB(SA.src, SB.src, t)
+  TMIX(skyTop, skyTop); TMIX(skyMid, skyMid); TMIX(skyHorizon, skyHorizon); TMIX(fog, fog);
   MIX(grassL); MIX(grassD); MIX(roadL); MIX(roadD);
   MIX(rumbleL); MIX(rumbleD); MIX(lane); MIX(edgeLine);
-  MIX(skylineFar); MIX(skylineNear); MIX(windowLit); MIX(windowDay);
-  MIX(sun); MIX(sunGlow); MIX(cloud);
+  TMIX(skylineFar, far); TMIX(skylineMid, mid); TMIX(skylineNear, nearL);
+  MIX(windowLit); MIX(windowDay);
+  MIX(sun); TMIX(sunGlow, sunGlow); TMIX(cloud, cloud);
   MIX(tunnelWallL); MIX(tunnelWallD); MIX(tunnelCeil); MIX(tunnelLight); MIX(portal);
   MIX(foliageL); MIX(foliageD); MIX(trunk); MIX(rock);
   MIX(lampPole); MIX(lampLight);
 #undef MIX
+#undef TMIX
 
-  grassL = mulRGB(grassL, T.grass);
-  grassD = mulRGB(grassD, T.grass);
-  fog = mulRGB(fog, T.fog);
-  skylineFar = mulRGB(skylineFar, T.far);
-  skylineNear = mulRGB(skylineNear, T.nearL);
+  grassL = mulRGB(grassL, G.grass);
+  grassD = mulRGB(grassD, G.grass);
+  foliageL = mulRGB(foliageL, G.foliage);
+  foliageD = mulRGB(foliageD, G.foliage);
 
   pal.skyTop = pack(skyTop); pal.skyMid = pack(skyMid);
   pal.skyHorizon = pack(skyHorizon); pal.fog = pack(fog);
@@ -228,17 +311,25 @@ void setDayCycle(float cycle) {
   pal.trunk = pack(trunk); pal.rock = pack(rock);
   pal.lampPole = pack(lampPole); pal.lampLight = pack(lampLight);
 
-  // Ground materials: the day colour times the road's day -> now ratio
+  // Ground materials: the theme's day colour times the road's day -> now
+  // ratio; the water also mirrors the horizon
   const RGB8 dayRoad = PALETTES[0].roadL;
   float ratio[3] = { roadL.r / (float)dayRoad.r, roadL.g / (float)dayRoad.g, roadL.b / (float)dayRoad.b };
+  RGB8 waterC[2];
   for (int m = 0; m < MAT_COUNT; m++) {
     for (int k = 0; k < 2; k++) {
-      if (m == MAT_GRASS) pal.ground[m][k] = k ? pal.grassD : pal.grassL;
-      else pal.ground[m][k] = pack(mulRGB(GROUND_DAY[m][k], ratio));
+      if (m == MAT_GRASS) { pal.ground[m][k] = k ? pal.grassD : pal.grassL; continue; }
+      RGB8 c = mulRGB(G.mat[m][k], ratio);
+      if (m == MAT_WATER) { c = lerpRGB(c, skyHorizon, G.waterSky * (k ? 0.8f : 1.0f)); waterC[k] = c; }
+      pal.ground[m][k] = pack(c);
     }
   }
-  pal.kerbL = pack(mulRGB(KERB_DAY[0], ratio));
-  pal.kerbD = pack(mulRGB(KERB_DAY[1], ratio));
+  pal.kerbL = pack(mulRGB(G.kerb[0], ratio));
+  pal.kerbD = pack(mulRGB(G.kerb[1], ratio));
+  // the open sea of the background: deeper near the land, hazier far out
+  pal.water = pack(lerpRGB(waterC[0], skyHorizon, 0.30f));
+  pal.waterDeep = pack(lerpRGB(waterC[1], skyTop, 0.12f));
+  pal.skylineMid = pack(skylineMid);
 
   float light[3], amb[3], dir[3];
   for (int i = 0; i < 3; i++) {
@@ -263,6 +354,10 @@ void setDayCycle(float cycle) {
     pal.facadeFront[i] = shadeRGB(FACADES[i], light, amb, 0.55f);
     pal.roof[i]        = shadeRGB(FACADES[i], light, amb, 0.70f);
   }
+  for (int i = 0; i < PROP_PALETTE; i++) pal.prop[i] = shadeRGB(PROPS[i], light, amb, 0.75f);
+  pal.seaGlint = lerpCol(pal.sunGlow, COL_WHITE, 0.35f);
+  // snow on the distant ranges: lit by the sun / moon, a little hazy
+  pal.snowCap = lerpCol(shadeRGB(G.mat[MAT_SNOW][0], light, amb, 0.80f), pal.skyHorizon, 0.25f);
   sAppliedQ = floorf(cycle * 64.0f);
   sAppliedTheme = colorTheme;
 }
