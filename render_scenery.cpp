@@ -538,11 +538,12 @@ static void drawLighthouse(float sx, float sy, float scale, float fog) {
     int cx = (int)sx, cy = (int)(sy - H * 0.88f);
     float ang = bgTime * 1.3f;
     float c = cosf(ang), s = sinf(ang);
-    float L = H * (0.9f + 0.6f * fabsf(s)), hw = H * 0.05f;
-    int a = (int)(9 * lightK * (1 - fog));
+    float L = H * (0.9f + 0.7f * fabsf(s)), hw = H * 0.07f;
+    int a = (int)(14 * lightK * (1 - fog));
     if (a > 0) {
       float ex = cx + s * L;
       gfx_fillTri((float)cx, (float)cy - 1, ex, cy - hw, ex, cy + hw, pal.lampLight, GFX_ADD, a);
+      gfx_fillTri((float)cx, (float)cy, ex, cy - hw * 0.4f, ex, cy + hw * 0.4f, pal.lampLight, GFX_ADD, a);
     }
     int flash = c > 0.85f ? (int)((c - 0.85f) * 120.0f) : 0;   // the beam faces the camera
     gfx_glow(cx, cy, (int)fmaxF(3, wt * (1.5f + flash * 0.08f)), pal.lampLight, (int)((10 + flash) * lightK * (1 - fog)));

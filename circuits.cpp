@@ -484,7 +484,7 @@ static void cornerSigns(float chevronCurve, float boardCurve) {
     const int s0 = sSecStart[k];
     const int last = s0 + (int)(c.len * 0.70f);
     // on the kerb in front of a facade, behind a rail, or just off the verge
-    for (int i = s0 - 8; i <= last; i += 3) {
+    for (int i = s0 - 8; i <= last; i += 4) {
       const Segment& s = segAt(i);
       float d = s.build[outside] ? 1.30f : ((s.flags & railFlag(outside)) ? 1.50f : 1.32f);
       if (!forceSprite(i, outside, type, d)) forceSprite(i + 1, outside, type, d);
@@ -642,15 +642,15 @@ static void decorateCity() {
           case CZ_FINANCE:
             if (built && h % 11 == 0) placeSprite(i, side, SPR_PLANTER, 1.30f);
             if (built && h % 97 == 5) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
-            if (built && h % 19 == 7) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_CYAN : SPR_NEON_PINK, 1.43f);
+            if (built && h % 29 == 7) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_CYAN : SPR_NEON_PINK, 1.43f);
             break;
           case CZ_OLDTOWN:
             if (built && i % 14 == side * 7) placeSprite(i, side, SPR_STREET_TREE, 1.32f);
-            if (built && h % 9 == 3) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
+            if (built && h % 13 == 3) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
             if (built && h % 101 == 9) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
             break;
           case CZ_SHOPPING:
-            if (built && h % 4 == 1) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
+            if (built && h % 7 == 1) placeSprite(i, side, (h >> 8) & 1 ? SPR_NEON_PINK : SPR_NEON_CYAN, 1.43f);
             if (built && h % 17 == 4) placeSprite(i, side, SPR_PLANTER, 1.30f);
             if (built && h % 89 == 11) placeSprite(i, side, SPR_BUS_STOP, 1.31f);
             break;
@@ -741,14 +741,27 @@ static void decorateCoast() {
           }
         }
         break;
-      case KZ_SEAWALL:        // the road cut into the cliff above the sea
+      case KZ_SEAWALL: {      // the road cut into the cliff above the sea, opening into coves
+        int sinceCove = 0;
         for (int i = i0; i < i1;) {
+          if (sinceCove > 44 && i1 - i > 30 && sRng.chance(0.5f)) {
+            int cove = sRng.range(12, 20);           // a cove: grass, rocks and palms
+            for (int j = 0; j < cove && i < i1; j++, i++) {
+              setMat(i, 1, MAT_GRASS);
+              if (j % 3 == 1) placeSprite(i, 1, sRng.chance(0.5f) ? SPR_PALM : SPR_ROCK, sRng.frange(1.5f, 2.8f));
+              else if (j % 3 == 2) placeSprite(i, 1, SPR_BUSH, sRng.frange(1.4f, 2.2f));
+            }
+            sinceCove = 0;
+            continue;
+          }
           int len = sRng.range(6, 14), h = sRng.range(130, 230), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_CLIFF, h, v);
+          sinceCove += len;
         }
         for (int i = i0; i < i1; i++)
           if (i % 41 == 13) placeSprite(i, 0, SPR_SAILBOAT, sRng.frange(3.0f, 10.0f));
         break;
+      }
       case KZ_CAPE:
         for (int i = i0; i < i1;) {
           int len = sRng.range(5, 12), h = sRng.range(150, 255), v = sRng.range(0, 16);
@@ -764,7 +777,7 @@ static void decorateCoast() {
           int len = sRng.range(5, 12), h = sRng.range(120, 220), v = sRng.range(0, 16);
           for (int j = 0; j < len && i < i1; j++, i++) setBuilding(i, 1, BLD_CLIFF, h, v);
         }
-        placeSprite((i0 + i1) / 2 - 6, 0, SPR_LIGHTHOUSE, 3.4f);
+        forceSprite(i0 - 3, 0, SPR_LIGHTHOUSE, 2.5f);      // on the point, seen all along the approach
         for (int i = i0; i < i1; i++) {
           if (i % 5 == 1) placeSprite(i, 0, sRng.chance(0.3f) ? SPR_BOULDER : SPR_ROCK, sRng.frange(1.6f, 2.8f));
           else if (i % 5 == 3) placeSprite(i, 0, SPR_GRASS, sRng.frange(1.3f, 2.2f));
@@ -791,12 +804,13 @@ static void decorateCoast() {
         for (int i = i0; i < i1; i++) {
           for (int side = 0; side < 2; side++) {
             uint32_t h = hash32((uint32_t)i * 7919u + (uint32_t)side);
-            if (h % 4 == 0) {
+            const bool fenceRun = ((i / 36 + side) % 3) == 0;   // runs of fence along the fields
+            if (fenceRun && (i & 1) == 0) {
+              placeSprite(i, side, SPR_FENCE, 2.7f);
+            } else if (h % 4 == 0) {
               int r = (int)((h >> 4) % 10);
               int t = r < 3 ? SPR_CYPRESS : (r < 5 ? SPR_FLOWERS : (r < 7 ? SPR_GRASS : (r < 8 ? SPR_ROCK : SPR_BUSH)));
-              placeSprite(i, side, t, sRng.frange(1.4f, 3.8f));
-            } else if (h % 4 == 2 && (i & 1)) {
-              placeSprite(i, side, SPR_FENCE, 2.7f);
+              placeSprite(i, side, t, sRng.frange(1.4f, fenceRun ? 2.5f : 3.8f));
             } else if (i % 12 == 0) {
               placeSprite(i, side, SPR_POST, 1.15f);
             }
@@ -855,28 +869,33 @@ static void decorateMountain() {
         const bool rail = (s.flags & railFlag(side)) != 0;
         const float near = rail ? 1.45f : 1.30f;
         switch (z) {
-          case MZ_VALLEY:
-            if (h % 5 == 0) {
+          case MZ_VALLEY: {
+            const bool fenceRun = ((i / 40 + side) % 2) == 0;   // pasture fences, alternating sides
+            if (fenceRun && (i & 1) == 0) {
+              placeSprite(i, side, SPR_FENCE, 2.7f);
+            } else if (h % 61 == 13) {
+              placeSprite(i, side, SPR_CHALET, sRng.frange(3.6f, 5.0f));
+            } else if (h % 5 == 0) {
               int r = (int)((h >> 5) % 10);
               int t = r < 3 ? SPR_FLOWERS : (r < 5 ? SPR_GRASS : (r < 8 ? pine : SPR_BUSH));
-              placeSprite(i, side, t, sRng.frange(near, 4.5f));
-            } else if (h % 5 == 2 && (i & 1)) {
-              placeSprite(i, side, SPR_FENCE, 2.7f);
-            } else if (h % 97 == 13) {
-              placeSprite(i, side, SPR_CHALET, sRng.frange(3.6f, 5.0f));
+              placeSprite(i, side, t, sRng.frange(near, fenceRun ? 2.5f : 4.5f));
             } else if (i % 12 == 6) {
               placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.15f);
             }
             break;
+          }
           case MZ_FOREST:
             if (h % 3 != 0) placeSprite(i, side, h % 11 == 1 ? SPR_ROCK : pine, sRng.frange(near + 0.15f, 4.2f));
             else if (i % 12 == 6) placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.15f);
             break;
           case MZ_WALL_L: case MZ_WALL_R:
-            if (s.build[side]) {
+            if (s.build[side]) {                      // fallen rocks at the foot of the face
               if (h % 17 == 3) placeSprite(i, side, SPR_BOULDER, 1.30f);
+            } else if (rail) {                        // the drop: keep the view open over the rail
+              if (i % 10 == 5) placeSprite(i, side, SPR_SNOW_POLE, 1.40f);
+              else if (h % 23 == 2) placeSprite(i, side, bare ? SPR_ROCK : pine, sRng.frange(1.6f, 2.2f));
             } else if (h % 3 == 0) {
-              placeSprite(i, side, bare ? SPR_ROCK : pine, sRng.frange(1.55f, 3.6f));   // tree tops below the drop
+              placeSprite(i, side, bare ? SPR_ROCK : pine, sRng.frange(1.55f, 3.6f));
             }
             break;
           case MZ_HIGH:
