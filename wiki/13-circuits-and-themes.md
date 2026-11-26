@@ -26,9 +26,9 @@ minimap code no longer has to bend the outline shut.*
 | Theme / cycle | city, 1.4 → 2.4 (dusk → night) | coast, 0.5 → 1.4 (afternoon → sunset) | mountain, 3.3 → 4.3 (dawn → morning) |
 | Segments / sections | 1856 / 28 | 1976 / 23 | 1960 / 29 |
 | Corners | 13: ten 90° corners (curve 7.1–7.5), a 180° hairpin (8.5), a chicane | 12 long sweepers (curve 1.5–3.1) | 15: two 180° hairpins (9.8), a 120° and a 140° corner (6.0 / 5.1), sweepers and kinks |
-| Elevation | −600 … +800 (mild), the underpass dips 600 | 0 … 2800, rolling | 0 … 7600: one long climb and descent, max slope 0.168 |
+| Elevation | −600 … +800 (mild), the underpass dips 600 | 0 … 2800, rolling | 0 … 7600: a long climb, a long descent with a dip and a blind crest, max slope 0.170 |
 | Tunnels | an underpass (56) | one through the headland (64) | two through the rock (64 + 56) |
-| Autopilot best lap / race (NORMAL) | 34.9 s / 1:53.7, P3 | 33.9 s / 1:49.1, P2 | 37.3 s / 1:59.3, P1 |
+| Autopilot best lap / race (NORMAL) | 34.9 s / 1:53.7, P3 | 33.9 s / 1:49.1, P2 | 37.4 s / 1:59.5, P1 |
 
 **NEON CITY** — a downtown street circuit, clockwise, the start on the west
 side heading north. The start/finish **boulevard** (sandstone and offices,
@@ -61,9 +61,10 @@ climb north (rock wall on the uphill side = the inside of each hairpin, a
 rail over the drop on the other side, chevrons and distance boards), then
 **tunnel 1**, the snowy **high road** above the tree line (snow poles,
 boulders, snowy pines), the **lake** (water and a rail on the left), the
-descent on a cliff road, **tunnel 2**, the forest straight with a kink and
-the valley sweeper back to the start. Snow covers the verges above 58 % of
-the circuit's height range.
+descent on a cliff road, **tunnel 2**, the forest straight down into a dip,
+over a blind **crest** with a kink, plunging into the valley and the valley
+sweeper back to the start. Snow covers the verges above 58 % of the
+circuit's height range.
 
 ## 13.2 How a layout is described
 
