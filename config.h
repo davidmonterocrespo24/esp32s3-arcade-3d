@@ -1,7 +1,10 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  GAME CONFIGURATION AND CONSTANTS
-  Pins live in board.h.
+  SHARED GAME CONSTANTS
+  Only constants that more than one module depends on live here
+  (screen, world scale, building/limit geometry). Module tunables
+  live in the module's own header: physics in physics.h, the day
+  cycle in colors.h, race rules in race.h. Pins live in board.h.
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -9,7 +12,7 @@
 #define CONFIG_H
 
 // ═══════════════════════════════════════════════════════════════
-//  SCREEN CONSTANTS
+//  SCREEN
 // ═══════════════════════════════════════════════════════════════
 #define SCR_W       320
 #define SCR_H       240
@@ -20,70 +23,49 @@
 #define SHOW_FPS    1
 
 // ═══════════════════════════════════════════════════════════════
-//  GAME CONSTANTS
+//  WORLD
+//  The track has segCount segments (track.h); MAX_SEGS (structs.h)
+//  is only the capacity of the segment buffer.
 // ═══════════════════════════════════════════════════════════════
-#define SEG_LEN     200       // Length of each segment
-#define RUMBLE_LEN  3         // Segments per rumble/stripe colour
-#define DRAW_DIST   90        // Draw distance in segments (was 40)
-#define TOTAL_SEGS  1000      // Track length: 16 B/segment -> 16 KB (was 200 = 3 s laps)
-#define ROAD_W      2000      // Road half-width
-#define LANES       3         // Number of lanes
-#define FOV_DEG     100       // Field of view in degrees
-#define CAM_HEIGHT  1000      // Camera height
-#define FOG_DENSITY 4.0f      // Exponential fog density over DRAW_DIST
-#define TUNNEL_H    2800      // Tunnel ceiling height above the road (was 4500 = 23 m)
-#define TOTAL_LAPS  3
-
-// 1 = random track on startup, 0 = fixed track
-#define RANDOM_TRACK 1
+#define SEG_LEN     200       // length of each segment (world units)
+#define RUMBLE_LEN  3         // segments per rumble/stripe colour
+#define DRAW_DIST   90        // draw distance in segments
+#define ROAD_W      2000      // road half-width (world units)
+#define LANES       3         // number of lanes
+#define FOV_DEG     100       // field of view in degrees
+#define CAM_HEIGHT  1000      // camera height
+#define FOG_DENSITY 4.0f      // exponential fog density over DRAW_DIST
+#define TUNNEL_H    2800      // tunnel ceiling height above the road
 
 // ═══════════════════════════════════════════════════════════════
-//  DAY / NIGHT CYCLE
-//  The cycle is day -> sunset -> night -> dawn -> day, driven by
-//  distance travelled. Each phase holds, then blends into the next.
+//  LATERAL LIMITS (road half-widths from the centre line).
+//  Contract between the renderer and the physics: what is drawn
+//  at these offsets is solid at these offsets.
 // ═══════════════════════════════════════════════════════════════
-#define CYCLE_PHASE_DIST   (TOTAL_SEGS * SEG_LEN * 1.25f) // distance per phase
-#define CYCLE_BLEND        0.30f   // last 30% of each phase blends to the next
-#define CYCLE_START        0.0f    // 0=day 1=sunset 2=night 3=dawn
+#define ROAD_EDGE_X     1.00f  // tarmac ends here
+#define RAIL_X          1.18f  // guard rails (SEGF_RAIL_L/R)
+#define TUNNEL_WALL_X   1.20f  // tunnel walls
+#define BUILDING_OFFSET 1.5f   // building / cliff / wall faces (Segment::build > 0)
+#define OFFROAD_MAX_X   2.40f  // hard limit when nothing solid is closer
+
+// Ground material layout beyond the road edge (render_road draws it this
+// way, physics drags the car accordingly):
+//   MAT_SIDEWALK: kerb up to SIDEWALK_KERB_X, sidewalk up to BUILDING_OFFSET,
+//                 side-street asphalt beyond
+//   MAT_SAND    : beach up to BEACH_WATER_X, the sea beyond
+//   MAT_WATER   : sea-wall top up to SEAWALL_X, water beyond
+//   others      : rumble strip, then the material
+#define SIDEWALK_KERB_X 1.07f
+#define BEACH_WATER_X   2.60f
+#define SEAWALL_X       1.26f
 
 // ═══════════════════════════════════════════════════════════════
-//  CAR PHYSICS (per-frame factors are defined at 60 fps and are
-//  rescaled by dt, so tuning no longer depends on frame rate)
+//  BUILDINGS (geometry shared by the circuit generator, the
+//  building renderer and the physics)
 // ═══════════════════════════════════════════════════════════════
-#define SPEED_MULTIPLIER   65.0f   // maxSpeed = SEG_LEN * SPEED_MULTIPLIER (~246 km/h)
-#define ACCEL_TARGET       0.9f    // targetAccel = maxSpeed * ACCEL_TARGET
-#define ACCEL_RAMP         420.0f  // How fast acceleration ramps up (u/s³)
-#define ACCEL_NEAR_MAX     0.90f   // Speed threshold to reduce acceleration
-#define ACCEL_DAMPING      0.97f   // Multiplier when approaching maxSpeed (per 60 Hz frame)
-#define FRICTION           0.996f  // Friction per 60 Hz frame (~3.3 s coast-down)
-#define BRAKE_DECEL        9000.0f // Brake deceleration (u/s²)
-#define GRAVITY_FACTOR     1600.0f // Effect of slopes on acceleration
-#define CENTRIFUGAL        0.18f   // Centrifugal force in curves
-#define CURVE_FORCE        3.0f    // Lateral force multiplier in curves
-#define LATERAL_FRICTION   0.90f   // Lateral velocity damping per 60 Hz frame
-#define STEER_AUTO         1.8f    // Autopilot response to curves
-#define STEER_MANUAL       2.2f    // Manual steering speed (road half-widths / s)
-#define CENTRIFUGAL_DX     1.5f    // Lateral centrifugal push factor
-#define AUTOPILOT_IDLE_MS  8000    // No input for this long -> autopilot (demo)
-
-// ═══════════════════════════════════════════════════════════════
-//  BUILDINGS
-// ═══════════════════════════════════════════════════════════════
-#define BUILDING_H_UNIT    2048    // Segment stores height / BUILDING_H_UNIT in a byte
-#define BUILDING_H_MIN     120000  // Minimum building height (~10 floors)
-#define BUILDING_H_MAX     350000  // Maximum building height (~30 floors)
-#define BUILDING_FLOOR_H   11000   // Height of one floor (same units)
-#define BUILDING_W         400000  // Base building width
-#define BUILDING_OFFSET    1.5f    // Distance from road edge
-#define BUILDING_SEG_MIN   6       // Minimum segments per block
-#define BUILDING_SEG_MAX   16      // Maximum segments per block
-#define BUILDING_GAP_MIN   10      // Minimum gap segments between blocks
-#define BUILDING_GAP_MAX   20      // Maximum gap segments between blocks
-
-// ═══════════════════════════════════════════════════════════════
-//  TRAFFIC
-// ═══════════════════════════════════════════════════════════════
-#define MAX_CARS 10
+#define BUILDING_H_UNIT    2048    // Segment::build stores height / BUILDING_H_UNIT
+#define BUILDING_FLOOR_H   11000   // height of one floor (same units)
+#define BUILDING_W         400000  // depth of a building away from the road (px * scale)
 
 // ═══════════════════════════════════════════════════════════════
 //  PLAYER CAR LOOK

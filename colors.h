@@ -2,8 +2,7 @@
   ═══════════════════════════════════════════════════════════════
   COLOR AND PALETTE MANAGEMENT
   RGB565 helpers + the day/sunset/night/dawn palette with smooth
-  blending between phases (restores the day/night cycle that was
-  lost when the sky became a fixed sunset bitmap in commit 684eed5).
+  blending between phases, tinted per circuit theme (setTheme).
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -11,6 +10,7 @@
 #define COLORS_H
 
 #include <stdint.h>
+#include "structs.h"
 
 // Named colours (RGB565) used across the game
 #define COL_BLACK   0x0000
@@ -21,6 +21,16 @@
 #define COL_GREEN   0x07E0
 #define COL_GREY    0x7BEF
 #define COL_CYAN    0x07FF
+
+// ═══════════════════════════════════════════════════════════════
+//  DAY / NIGHT CYCLE
+//  0 = day, 1 = sunset, 2 = night, 3 = dawn (wraps at 4). Each phase
+//  holds, then blends into the next during its last CYCLE_BLEND.
+//  Races drive the cycle by race progress (circuit cycleStart ->
+//  cycleEnd); the demo / free modes advance it by distance.
+// ═══════════════════════════════════════════════════════════════
+#define CYCLE_PHASE_DIST   250000.0f  // distance per phase in free mode
+#define CYCLE_BLEND        0.30f      // last 30% of each phase blends to the next
 
 // ═══════════════════════════════════════════════════════════════
 //  RGB565 HELPERS
@@ -56,7 +66,11 @@ uint16_t lerpCol(uint16_t c1, uint16_t c2, float t);
 // ═══════════════════════════════════════════════════════════════
 //  ACTIVE PALETTE (RGB565, recomputed when the time of day moves)
 // ═══════════════════════════════════════════════════════════════
-#define BUILDING_PALETTE 8
+// Facade base colours, shaded per face from the palette light
+enum FacadeColor : uint8_t {
+  FAC_CONCRETE = 0, FAC_BRICK, FAC_SANDSTONE, FAC_BLUEGLASS, FAC_TEAL, FAC_SLATE,
+  FAC_CREAM, FAC_RUST, FAC_STUCCO, FAC_TERRACOTTA, FAC_ROCK, FAC_WALLGREY,
+  BUILDING_PALETTE };
 
 struct ColorSet {
   uint16_t skyTop, skyMid, skyHorizon, fog;
@@ -67,6 +81,8 @@ struct ColorSet {
   uint16_t tunnelWallL, tunnelWallD, tunnelCeil, tunnelLight, portal;
   uint16_t foliageL, foliageD, trunk, rock;
   uint16_t lampPole, lampLight;
+  uint16_t ground[MAT_COUNT][2];          // light / dark band per material (no fog)
+  uint16_t kerbL, kerbD;                  // city kerb (instead of the red/white rumble)
   uint16_t facadeLit[BUILDING_PALETTE];   // face turned to the sun
   uint16_t facadeShade[BUILDING_PALETTE]; // face away from the sun
   uint16_t facadeFront[BUILDING_PALETTE]; // face towards the camera
@@ -83,10 +99,17 @@ struct ColorSet {
 extern ColorSet pal;
 extern int   timeOfDay;     // 0=day 1=sunset 2=night 3=dawn (dominant phase)
 extern float dayCycle;      // continuous cycle position in [0, 4)
+extern int   colorTheme;    // theme set by setTheme (Theme in circuits.h)
 
-// Set the cycle position (0..4) and rebuild `pal`.
+// Choose the circuit theme (tints the four time-of-day palettes and sets
+// the ground materials). Call before setDayCycle; buildCircuit does it.
+void setTheme(int theme);
+// Set the cycle position (0..4, wraps) and rebuild `pal` now.
 void setDayCycle(float cycle);
-// Advance the cycle by distance travelled (call once per frame).
+// Set the cycle position, rebuilding `pal` only when it can visibly change
+// (inside a blend window, or every 1/64 of a phase). Cheap to call per frame.
+void applyDayCycle(float cycle);
+// Advance the cycle by distance travelled (demo / free mode).
 void advanceDayCycle(float distance);
 
 #endif // COLORS_H

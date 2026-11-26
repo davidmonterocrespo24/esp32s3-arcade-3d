@@ -1,41 +1,42 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  ROAD, TUNNEL, BUILDING, SCENERY AND TRAFFIC RENDERING
+  ROAD PASS — implementation
 
   Pass 1 (front to back): project every segment boundary once and
   record, per segment, the screen row below which nearer road already
   covers everything (clipRow).
   Pass 2 (back to front): for each segment draw road rows, buildings,
-  tunnel, scenery, traffic and the tunnel portal, clipped to clipRow,
-  so hills hide what is behind them and nearer things paint over
-  farther ones (painter's algorithm).
+  tunnel, rails, scenery, lamps, cars and the tunnel portal, clipped to
+  clipRow, so hills hide what is behind them and nearer things paint
+  over farther ones (painter's algorithm).
 
-  Changes vs. the first version:
-  - Road drawn per SCANLINE with exact edge interpolation and 1-px
-    anti-aliased boundaries (was 3 stair-stepped rectangles/segment).
-  - Fog per scanline from the true depth (1/z interpolation), applied to
-    buildings, trees, lamps and traffic too (they used to ignore fog).
-  - Sprites and traffic are drawn inside the back-to-front pass, so a
-    tree behind a building is hidden by it (they used to be drawn last,
-    on top of everything), and traffic is placed at its exact position
-    inside the segment (it used to snap from segment to segment).
-  - Real near-plane clipping instead of skipping segment 0.
+  Road rows are built from per-segment region specs: boundaries at fixed
+  fractions of the road half-width (ground materials, kerbs, rumble,
+  edge lines, lane dashes, zebra crossings, the start line), coloured
+  per segment, fogged per row from the true depth, anti-aliased by
+  gfx_rowRegions.
   ═══════════════════════════════════════════════════════════════
 */
 
 #pragma GCC optimize("O2")
 
 #include "render_road.h"
-#include "rendering.h"
 #include "render_building.h"
-#include "render_traffic.h"
+#include "render_scenery.h"
+#include "render_cars.h"
+#include "gfx.h"
+#include "colors.h"
 #include "track.h"
-#include "physics.h"
 #include "utils.h"
 #include <math.h>
 
-static const float NEAR_Z = 30.0f;
-static const float WALL_K = 1.20f;          // tunnel wall position (road half-widths)
+RoadCam roadCam = { 0, CAM_HEIGHT, 1 };
+float roadBX[DRAW_DIST + 1], roadBY[DRAW_DIST + 1], roadBZ[DRAW_DIST + 1];
+int   roadBaseIdx = 0;
+float roadPosOff = 0;
+
+static const float NEAR_Z = ROAD_NEAR_Z;
+static const float WALL_K = TUNNEL_WALL_X;   // tunnel wall position (road half-widths)
 static const float MAX_Z  = (float)DRAW_DIST * SEG_LEN;
 
 struct SegView {
@@ -81,49 +82,137 @@ static inline int rowOf(float y) {
   return iclamp(r, 0, SCR_H);
 }
 
-static float sCamX, sCamY, sCamDepth;
-
-static inline void project(ProjPt& p, float wx, float wy, float wz) {
-  p.z = wz;
-  p.scale = sCamDepth / wz;
-  p.x = SCR_CX + p.scale * (wx - sCamX) * SCR_CX;
-  p.y = SCR_CY - p.scale * (wy - sCamY) * SCR_CY;
-  p.w = p.scale * ROAD_W * SCR_CX;
-}
+static inline void project(ProjPt& p, float wx, float wy, float wz) { roadProject(p, wx, wy, wz); }
 
 // ═══════════════════════════════════════════════════════════════
 //  ROAD ROWS
 // ═══════════════════════════════════════════════════════════════
+#define MAXB 44                  // region boundaries per row
+struct BandSpec {
+  int n;                         // boundaries; n + 1 regions
+  float u[MAXB];                 // boundary offsets in road half-widths (ascending)
+  uint16_t c[MAXB + 1];          // region colours before fog
+};
+
+static inline void addB(BandSpec& S, float u, uint16_t after) {
+  if (S.n < MAXB) { S.u[S.n++] = u; S.c[S.n] = after; }
+}
+
+static const float RW = 0.11f;   // rumble width
+static const float EW = 0.035f;  // edge line width
+static const float LW = 0.03f;   // lane line width
+
+// What lies beyond one road edge, from the edge outwards: region i spans
+// up to u[i] (road half-widths from the centre); the last one is unbounded.
+struct SideProfile { int n; float u[4]; uint16_t c[4]; };
+
+static void sideProfile(SideProfile& P, const Segment& seg, int side, bool light) {
+  const int k = light ? 0 : 1;
+  P.n = 0;
+  if (seg.isTunnel()) {
+    P.u[0] = 1.0f + RW; P.c[0] = light ? pal.tunnelWallD : pal.tunnelCeil;
+    P.u[1] = 99.0f;     P.c[1] = light ? pal.tunnelWallL : pal.tunnelWallD;
+    P.n = 2;
+    return;
+  }
+  const int mat = seg.mat(side);
+  const uint16_t rumble = light ? pal.rumbleL : pal.rumbleD;
+  const uint16_t ground = pal.ground[mat < MAT_COUNT ? mat : 0][k];
+  switch (mat) {
+    case MAT_SIDEWALK:   // kerb, sidewalk up to the building line, side street beyond
+      P.u[0] = SIDEWALK_KERB_X; P.c[0] = light ? pal.kerbL : pal.kerbD;
+      P.u[1] = BUILDING_OFFSET; P.c[1] = ground;
+      P.u[2] = 99.0f; P.c[2] = darkenCol(pal.roadD, 0.82f);
+      P.n = 3;
+      break;
+    case MAT_SAND:       // beach, then the sea
+      P.u[0] = 1.0f + RW; P.c[0] = rumble;
+      P.u[1] = BEACH_WATER_X; P.c[1] = ground;
+      P.u[2] = 99.0f;     P.c[2] = pal.ground[MAT_WATER][k];
+      P.n = 3;
+      break;
+    case MAT_WATER:      // narrow sea-wall top, then water
+      P.u[0] = 1.0f + RW; P.c[0] = rumble;
+      P.u[1] = SEAWALL_X; P.c[1] = pal.ground[MAT_SIDEWALK][0];
+      P.u[2] = 99.0f;     P.c[2] = ground;
+      P.n = 3;
+      break;
+    default:
+      P.u[0] = 1.0f + RW; P.c[0] = rumble;
+      P.u[1] = 99.0f;     P.c[1] = ground;
+      P.n = 2;
+      break;
+  }
+}
+
+static void buildSpec(BandSpec& S, const Segment& seg, int sIdx, int checkerPhase) {
+  const bool light = ((sIdx / RUMBLE_LEN) & 1) == 0;
+  const bool tun = seg.isTunnel();
+  uint16_t road = light ? pal.roadL : pal.roadD, edge = pal.edgeLine, lane = pal.lane;
+  if (tun) {
+    road = darkenCol(road, 0.72f);
+    edge = darkenCol(edge, 0.7f);
+    lane = darkenCol(lane, 0.75f);
+  }
+  SideProfile L, R;
+  sideProfile(L, seg, 0, light);
+  sideProfile(R, seg, 1, light);
+
+  // Left side: outermost region first, then towards the road edge
+  S.n = 0;
+  S.c[0] = L.c[L.n - 1];
+  for (int i = L.n - 2; i >= 0; i--) addB(S, -L.u[i], L.c[i]);
+  addB(S, -1.0f, edge);
+
+  if (seg.flags & SEGF_START) {
+    // chequered start/finish line across the road (two rows: checkerPhase)
+    const int CH = 16;
+    float w = (2.0f - 2.0f * EW) / CH;
+    for (int i = 0; i < CH; i++)
+      addB(S, -1.0f + EW + w * i, ((i + checkerPhase) & 1) ? COL_WHITE : road);
+  } else {
+    addB(S, -1.0f + EW, road);
+    if (seg.flags & SEGF_CROSSWALK) {
+      // zebra bars parallel to the driving direction
+      const int BARS = 8;
+      const float span = 1.76f, bw = 0.11f, step = (span - bw) / (BARS - 1);
+      for (int i = 0; i < BARS; i++) {
+        float a = -0.88f + step * i;
+        addB(S, a, lane);
+        addB(S, a + bw, road);
+      }
+    } else if (light) {
+      for (int l = 1; l < LANES; l++) {
+        float lx = -1.0f + 2.0f * l / LANES;
+        addB(S, lx - LW * 0.5f, lane);
+        addB(S, lx + LW * 0.5f, road);
+      }
+    }
+  }
+  addB(S, 1.0f - EW, edge);
+
+  // Right side: from the road edge outwards
+  addB(S, 1.0f, R.c[0]);
+  for (int i = 1; i < R.n; i++) addB(S, R.u[i - 1], R.c[i]);
+}
+
 static void drawBand(const SegView& s, const Segment& seg, int sIdx) {
   int r0 = rowOf(s.f.y), r1 = imin(rowOf(s.n.y), s.clipRow);
   if (r1 <= r0) return;
   float dy = s.n.y - s.f.y;
   if (dy < 1e-3f) return;
 
-  const bool light = ((sIdx / RUMBLE_LEN) & 1) == 0;
-  const bool tun = seg.tunnel != 0;
-  uint16_t bGrass, bRumble, bEdge, bRoad, bLane, fogc;
-  if (tun) {
-    bGrass  = light ? pal.tunnelWallL : pal.tunnelWallD;
-    bRumble = light ? pal.tunnelWallD : pal.tunnelCeil;
-    bEdge   = darkenCol(pal.edgeLine, 0.7f);
-    bRoad   = darkenCol(light ? pal.roadL : pal.roadD, 0.72f);
-    bLane   = darkenCol(pal.lane, 0.75f);
-    fogc    = COL_BLACK;
-  } else {
-    bGrass  = light ? pal.grassL : pal.grassD;
-    bRumble = light ? pal.rumbleL : pal.rumbleD;
-    bEdge   = pal.edgeLine;
-    bRoad   = light ? pal.roadL : pal.roadD;
-    bLane   = pal.lane;
-    fogc    = pal.fog;
-  }
+  const bool tun = seg.isTunnel();
+  const bool start = (seg.flags & SEGF_START) != 0;
+  static BandSpec spec[2];
+  buildSpec(spec[0], seg, sIdx, 0);
+  if (start) buildSpec(spec[1], seg, sIdx, 1);
+  const uint16_t fogc = tun ? COL_BLACK : pal.fog;
 
   float invZf = 1.0f / s.f.z, invZn = 1.0f / s.n.z;
-  int lastA = -1;
-  uint16_t g = 0, ru = 0, ed = 0, ro = 0, la = 0;
-  float b[12];
-  uint16_t c[13];
+  int lastA = -1, lastSpec = -1;
+  float b[MAXB];
+  uint16_t c[MAXB + 1];
 
   for (int y = r0; y < r1; y++) {
     float t = (y + 0.5f - s.f.y) / dy;              // 0 far .. 1 near
@@ -134,28 +223,15 @@ static void drawBand(const SegView& s, const Segment& seg, int sIdx) {
     float z = 1.0f / (invZf + (invZn - invZf) * t);
     int a = fogAlpha(tun ? z * 1.6f : z);
     if (tun && a > 28) a = 28;
-    if (a != lastA) {
-      g = fogMix(bGrass, fogc, a); ru = fogMix(bRumble, fogc, a); ed = fogMix(bEdge, fogc, a);
-      ro = fogMix(bRoad, fogc, a); la = fogMix(bLane, fogc, a);
+    int si = (start && t >= 0.5f) ? 1 : 0;
+    const BandSpec& S = spec[si];
+    if (a != lastA || si != lastSpec) {
+      for (int k = 0; k <= S.n; k++) c[k] = fogMix(S.c[k], fogc, a);
       lastA = a;
+      lastSpec = si;
     }
-    float rw = hw * 0.11f, ew = hw * 0.035f, lw = hw * 0.03f;
-    int k = 0, nc = 0;
-    c[nc++] = g;   b[k++] = cx - hw - rw;
-    c[nc++] = ru;  b[k++] = cx - hw;
-    c[nc++] = ed;  b[k++] = cx - hw + ew;
-    c[nc++] = ro;
-    if (light) {
-      for (int l = 1; l < LANES; l++) {
-        float lx = cx - hw + 2.0f * hw * l / LANES;
-        b[k++] = lx - lw * 0.5f; c[nc++] = la;
-        b[k++] = lx + lw * 0.5f; c[nc++] = ro;
-      }
-    }
-    b[k++] = cx + hw - ew; c[nc++] = ed;
-    b[k++] = cx + hw;      c[nc++] = ru;
-    b[k++] = cx + hw + rw; c[nc++] = g;
-    gfx_rowRegions(y, b, c, nc);
+    for (int k = 0; k < S.n; k++) b[k] = cx + S.u[k] * hw;
+    gfx_rowRegions(y, b, c, S.n + 1);
   }
 }
 
@@ -163,7 +239,7 @@ static void drawBand(const SegView& s, const Segment& seg, int sIdx) {
 //  TUNNEL
 // ═══════════════════════════════════════════════════════════════
 static inline float ceilY(const ProjPt& p, float worldY) {
-  return SCR_CY - p.scale * (worldY + TUNNEL_H - sCamY) * SCR_CY;
+  return SCR_CY - p.scale * (worldY + TUNNEL_H - roadCam.camY) * SCR_CY;
 }
 
 static void drawTunnelSeg(const SegView& s, int sIdx, bool farthest) {
@@ -209,7 +285,7 @@ static void drawTunnelSeg(const SegView& s, int sIdx, bool farthest) {
 static void drawPortal(const SegView& s) {
   float sc = s.n.scale, gy = s.n.y;
   float cy = ceilY(s.n, s.nyW);
-  float topY = SCR_CY - sc * (s.nyW + TUNNEL_H * 2.1f - sCamY) * SCR_CY;
+  float topY = SCR_CY - sc * (s.nyW + TUNNEL_H * 2.1f - roadCam.camY) * SCR_CY;
   float l = s.n.x - s.n.w * WALL_K, r = s.n.x + s.n.w * WALL_K;
   float halfBase = s.n.w * 7.5f, halfTop = s.n.w * 3.2f;
   uint16_t col = fogF(pal.portal, s.fog);
@@ -240,70 +316,8 @@ static void drawPortal(const SegView& s) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  SCENERY SPRITES
+//  ROADSIDE: lamps, guard rails, start gantry
 // ═══════════════════════════════════════════════════════════════
-void drawSceneSprite(int type, float sx, float sy, float scale, float fog) {
-  if (sx < -80 || sx > SCR_W + 80) return;
-  float day = 1.0f - pal.night;
-  switch (type) {
-    case SPR_PINE: {
-      float h = scale * 30000, w = scale * 11000;
-      if (h < 3) return;
-      if (day > 0.1f) gfx_fillEllipse((int)sx, (int)sy, (int)(w * 0.6f), (int)fmaxF(1, w * 0.12f), COL_BLACK, GFX_BLEND, (int)(8 * day * (1 - fog)));
-      float tw = fmaxF(1.5f, w * 0.14f), th = h * 0.22f;
-      gfx_fillQuad(sx - tw * 0.5f, sy, sx + tw * 0.5f, sy, sx + tw * 0.5f, sy - th, sx - tw * 0.5f, sy - th, fogF(pal.trunk, fog));
-      uint16_t dk = fogF(pal.foliageD, fog), lt = fogF(pal.foliageL, fog);
-      for (int i = 0; i < 3; i++) {   // three tiers, shaded halves
-        float base = sy - th - h * 0.22f * i, top = base - h * 0.42f, half = w * (0.5f - 0.11f * i);
-        gfx_fillTri(sx, top, sx - half, base, sx, base, dk);
-        gfx_fillTri(sx, top, sx, base, sx + half, base, lt);
-      }
-      break;
-    }
-    case SPR_TREE: {
-      float h = scale * 27000, w = scale * 13000;
-      if (h < 3) return;
-      if (day > 0.1f) gfx_fillEllipse((int)sx, (int)sy, (int)(w * 0.55f), (int)fmaxF(1, w * 0.12f), COL_BLACK, GFX_BLEND, (int)(8 * day * (1 - fog)));
-      float tw = fmaxF(1.5f, w * 0.12f), th = h * 0.5f;
-      gfx_fillQuad(sx - tw * 0.5f, sy, sx + tw * 0.5f, sy, sx + tw * 0.4f, sy - th, sx - tw * 0.4f, sy - th, fogF(pal.trunk, fog));
-      float r = w * 0.5f;
-      int cyc = (int)(sy - th - r * 0.6f);
-      gfx_fillEllipse((int)sx, cyc, (int)r, (int)(r * 0.9f), fogF(pal.foliageD, fog));
-      gfx_fillEllipse((int)(sx + r * 0.2f), (int)(cyc - r * 0.2f), (int)(r * 0.7f), (int)(r * 0.62f), fogF(pal.foliageL, fog));
-      break;
-    }
-    case SPR_BUSH: {
-      float r = scale * 6500;
-      if (r < 1.5f) return;
-      gfx_fillEllipse((int)sx, (int)(sy - r * 0.55f), (int)r, (int)(r * 0.6f), fogF(pal.foliageD, fog));
-      gfx_fillEllipse((int)(sx + r * 0.25f), (int)(sy - r * 0.75f), (int)(r * 0.6f), (int)(r * 0.4f), fogF(pal.foliageL, fog));
-      break;
-    }
-    case SPR_ROCK: {
-      float h = scale * 6000, w = scale * 9000;
-      if (h < 1.5f) return;
-      uint16_t rc = fogF(pal.rock, fog);
-      float v[12] = { sx - w * 0.5f, sy, sx - w * 0.4f, sy - h * 0.6f, sx - w * 0.1f, sy - h,
-                      sx + w * 0.3f, sy - h * 0.85f, sx + w * 0.5f, sy - h * 0.3f, sx + w * 0.45f, sy };
-      gfx_fillPoly(v, 6, darkenCol(rc, 0.7f));
-      float u[8] = { sx - w * 0.38f, sy - h * 0.6f, sx - w * 0.1f, sy - h * 0.98f,
-                     sx + w * 0.28f, sy - h * 0.83f, sx + w * 0.05f, sy - h * 0.5f };
-      gfx_fillPoly(u, 4, rc);
-      break;
-    }
-    case SPR_POST: {
-      float h = scale * 9000, w = fmaxF(1.0f, scale * 900);
-      if (h < 2) return;
-      gfx_fillQuad(sx - w, sy, sx + w, sy, sx + w, sy - h, sx - w, sy - h, fogF(rgb(230, 230, 230), fog));
-      float rh = fmaxF(1.0f, h * 0.16f);
-      gfx_fillQuad(sx - w, sy - h * 0.82f, sx + w, sy - h * 0.82f, sx + w, sy - h * 0.82f - rh, sx - w, sy - h * 0.82f - rh, fogF(COL_RED, fog));
-      if (pal.night > 0.3f && scale > 0.00015f)   // reflector catches the headlights
-        gfx_glow((int)sx, (int)(sy - h * 0.82f), (int)fmaxF(2, rh * 1.5f), rgb(255, 60, 40), (int)(22 * pal.night * (1 - fog)));
-      break;
-    }
-  }
-}
-
 // Street lamp on one side of the road, with its light at night.
 static void drawLamp(const ProjPt& p, int side, float fog) {
   float sc = p.scale;
@@ -329,35 +343,79 @@ static void drawLamp(const ProjPt& p, int side, float fog) {
   }
 }
 
+// Guard rail along one road edge over the whole segment (beam + posts)
+static void drawRail(const SegView& s, int side, int sIdx) {
+  const float H0 = 130.0f, H1 = 290.0f;      // beam bottom / top (world units)
+  float xN = s.n.x + side * s.n.w * RAIL_X, xF = s.f.x + side * s.f.w * RAIL_X;
+  float bN = s.n.y - s.n.scale * H0 * SCR_CY, tN = s.n.y - s.n.scale * H1 * SCR_CY;
+  float bF = s.f.y - s.f.scale * H0 * SCR_CY, tF = s.f.y - s.f.scale * H1 * SCR_CY;
+  if (fmaxF(xN, xF) < -4 || fminF(xN, xF) > SCR_W + 4) return;
+  uint16_t beam = fogF(lerpCol(rgb(196, 200, 206), pal.fog, 0.15f), s.fog);
+  uint16_t dark = darkenCol(beam, 0.55f);
+  gfx_fillQuad(xN, bN, xF, bF, xF, tF, xN, tN, beam);
+  // a darker groove along the middle of the beam
+  float mN = (bN + tN) * 0.5f, mF = (bF + tF) * 0.5f;
+  float gN = fmaxF(0.5f, (bN - tN) * 0.12f), gF = fmaxF(0.5f, (bF - tF) * 0.12f);
+  gfx_fillQuad(xN, mN - gN, xF, mF - gF, xF, mF + gF, xN, mN + gN, dark);
+  if ((sIdx & 1) == 0) {   // post at the near end every other segment
+    float pw = fmaxF(0.6f, s.n.scale * 50.0f * SCR_CX);
+    gfx_fillQuad(xN - pw, s.n.y, xN + pw, s.n.y, xN + pw, tN, xN - pw, tN, dark);
+  }
+}
+
+// Start/finish gantry over the line: two posts and a chequered banner
+static void drawGantry(const ProjPt& p, float fog) {
+  const float H0 = 2300.0f, H1 = 2900.0f, X = 1.32f;
+  float sc = p.scale;
+  if (sc * H1 * SCR_CY < 4) return;
+  float lx = p.x - p.w * X, rx = p.x + p.w * X;
+  float yb = p.y - sc * H0 * SCR_CY, yt = p.y - sc * H1 * SCR_CY;
+  float pw = fmaxF(1.0f, sc * 110.0f * SCR_CX);
+  uint16_t post = fogF(rgb(70, 72, 80), fog);
+  gfx_fillQuad(lx - pw, p.y, lx + pw, p.y, lx + pw, yt, lx - pw, yt, post);
+  gfx_fillQuad(rx - pw, p.y, rx + pw, p.y, rx + pw, yt, rx - pw, yt, post);
+  // banner: two rows of checks
+  const int CH = 14;
+  float w = (rx - lx) / CH, ym = (yb + yt) * 0.5f;
+  uint16_t white = fogF(COL_WHITE, fog), black = fogF(rgb(20, 20, 24), fog);
+  for (int i = 0; i < CH; i++) {
+    float x0 = lx + w * i, x1 = x0 + w;
+    gfx_fillQuad(x0, yt, x1, yt, x1, ym, x0, ym, (i & 1) ? white : black);
+    gfx_fillQuad(x0, ym, x1, ym, x1, yb, x0, yb, (i & 1) ? black : white);
+  }
+  if (pal.night > 0.3f)
+    gfx_fillQuad(lx, yb, rx, yb, rx, yb + fmaxF(1, (yb - yt) * 0.12f), lx, yb + fmaxF(1, (yb - yt) * 0.12f),
+                 pal.lampLight, GFX_ADD, (int)(20 * pal.night * (1 - fog)));
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  MAIN PASS
 // ═══════════════════════════════════════════════════════════════
-struct CarSlot { int n; int car; float frac; };
-
 void drawRoad(float position, float playerX, float playerZdist, float cameraDepth) {
   if (!sFogInit) initFog();
+  if (segCount <= 0) return;
   int baseIdx = findSegIdx(position);
   float posOff = position - floorf(position / SEG_LEN) * SEG_LEN;
   float basePct = posOff / SEG_LEN;
+  roadBaseIdx = baseIdx;
+  roadPosOff = posOff;
 
   int pSeg = findSegIdx(position + playerZdist);
-  int pPrev = (pSeg - 1 + TOTAL_SEGS) % TOTAL_SEGS;
   float pPct = percentRemaining(position + playerZdist, SEG_LEN);
-  float playerY = lerpF(segments[pPrev].y, segments[pSeg].y, pPct);
-  sCamY = playerY + CAM_HEIGHT;
-  sCamX = playerX * ROAD_W;
-  sCamDepth = cameraDepth;
+  float playerY = lerpF(segAt(pSeg - 1).y, segAt(pSeg).y, pPct);
+  roadCam.camY = playerY + CAM_HEIGHT;
+  roadCam.camX = playerX * ROAD_W;
+  roadCam.camDepth = cameraDepth;
 
   // World data of every boundary: centre offset (curve accumulation),
   // elevation (far end of the previous segment) and camera-space z.
-  static float bx[DRAW_DIST + 1], by[DRAW_DIST + 1], bz[DRAW_DIST + 1];
   {
-    float x = 0, dx = -(segments[baseIdx].curve * basePct);
+    float x = 0, dx = -(segAt(baseIdx).curve * basePct);
     for (int n = 0; n <= DRAW_DIST; n++) {
-      bx[n] = x;
-      by[n] = segments[(baseIdx + n - 1 + TOTAL_SEGS) % TOTAL_SEGS].y;
-      bz[n] = n * SEG_LEN - posOff;
-      if (n < DRAW_DIST) { x += dx; dx += segments[(baseIdx + n) % TOTAL_SEGS].curve; }
+      roadBX[n] = x;
+      roadBY[n] = segAt(baseIdx + n - 1).y;
+      roadBZ[n] = n * SEG_LEN - posOff;
+      if (n < DRAW_DIST) { x += dx; dx += segAt(baseIdx + n).curve; }
     }
   }
 
@@ -368,21 +426,21 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
     SegView& s = sv[n];
     s.clipRow = rowOf(maxy);
     s.roadVis = false;
-    s.valid = bz[n + 1] > NEAR_Z;
+    s.valid = roadBZ[n + 1] > NEAR_Z;
     if (!s.valid) continue;
     lastValid = n;
-    float nz = bz[n], nx = bx[n], ny = by[n];
+    float nz = roadBZ[n], nx = roadBX[n], ny = roadBY[n];
     if (nz < NEAR_Z) {    // clip the near end to the near plane
-      float t = (NEAR_Z - nz) / (bz[n + 1] - nz);
-      nx += (bx[n + 1] - bx[n]) * t;
-      ny += (by[n + 1] - by[n]) * t;
+      float t = (NEAR_Z - nz) / (roadBZ[n + 1] - nz);
+      nx += (roadBX[n + 1] - roadBX[n]) * t;
+      ny += (roadBY[n + 1] - roadBY[n]) * t;
       nz = NEAR_Z;
     }
     project(s.n, nx, ny, nz);
-    project(s.f, bx[n + 1], by[n + 1], bz[n + 1]);
-    s.nyW = ny; s.fyW = by[n + 1];
-    s.nxW = nx; s.fxW = bx[n + 1];
-    s.fog = sFogLUT[iclamp((int)((nz + bz[n + 1]) * 0.5f * (FOG_LUT / MAX_Z)), 0, FOG_LUT)] / 32.0f;
+    project(s.f, roadBX[n + 1], roadBY[n + 1], roadBZ[n + 1]);
+    s.nyW = ny; s.fyW = roadBY[n + 1];
+    s.nxW = nx; s.fxW = roadBX[n + 1];
+    s.fog = sFogLUT[iclamp((int)((nz + roadBZ[n + 1]) * 0.5f * (FOG_LUT / MAX_Z)), 0, FOG_LUT)] / 32.0f;
     float top = s.f.y, bot = fminF(s.n.y, maxy);
     if (top < bot) { s.roadVis = true; maxy = top; }
   }
@@ -392,82 +450,47 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
   int groundEnd = rowOf(maxy);
   for (int y = horizonRow; y < groundEnd; y++) gfx_hspan(y, 0, SCR_W, pal.fog);
 
-  // Traffic per segment (exact position inside the segment)
-  CarSlot slots[MAX_CARS];
-  int nSlots = 0;
-  for (int i = 0; i < MAX_CARS; i++) {
-    float rel = trafficCars[i].z - (position - posOff);   // from the base boundary
-    if (rel < 0) rel += trackLength;
-    if (rel >= trackLength) rel -= trackLength;
-    int n = (int)(rel / SEG_LEN);
-    if (n < 1 || n >= DRAW_DIST) continue;
-    slots[nSlots].n = n;
-    slots[nSlots].car = i;
-    slots[nSlots].frac = (rel - n * SEG_LEN) / SEG_LEN;
-    nSlots++;
-  }
-  // far to near
-  for (int i = 1; i < nSlots; i++) {
-    CarSlot k = slots[i];
-    int j = i - 1;
-    while (j >= 0 && (slots[j].n + slots[j].frac) < (k.n + k.frac)) { slots[j + 1] = slots[j]; j--; }
-    slots[j + 1] = k;
-  }
-  int slotIdx = 0;
+  cars_prepare(position);
 
   // ---- Pass 2: back to front ----
   for (int n = DRAW_DIST - 1; n >= 0; n--) {
     SegView& s = sv[n];
     if (!s.valid) continue;
-    int sIdx = (baseIdx + n) % TOTAL_SEGS;
+    int sIdx = segWrap(baseIdx + n);
     const Segment& seg = segments[sIdx];
-    const Segment& prevSeg = segments[(sIdx - 1 + TOTAL_SEGS) % TOTAL_SEGS];
+    const Segment& prevSeg = segAt(sIdx - 1);
+    const bool tunnel = seg.isTunnel();
     gfx_setClip(0, 0, SCR_W, s.clipRow);
 
     if (s.roadVis) drawBand(s, seg, sIdx);
 
-    if (seg.tunnel) {
+    if (tunnel) {
       drawTunnelSeg(s, sIdx, n == lastValid);
     } else {
-      if (seg.buildL) {
-        bool front = prevSeg.buildL != seg.buildL || prevSeg.styleL != seg.styleL || prevSeg.tunnel;
-        drawBuilding(s.n, s.f, seg.buildL, seg.styleL, sIdx, true, front, s.fog);
+      for (int side = 0; side < 2; side++) {
+        if (!seg.build[side]) continue;
+        bool front = prevSeg.build[side] != seg.build[side] || prevSeg.style[side] != seg.style[side] ||
+                     prevSeg.isTunnel();
+        drawBuilding(s.n, s.f, seg.build[side], seg.style[side], sIdx, side == 0, front, s.fog);
       }
-      if (seg.buildR) {
-        bool front = prevSeg.buildR != seg.buildR || prevSeg.styleR != seg.styleR || prevSeg.tunnel;
-        drawBuilding(s.n, s.f, seg.buildR, seg.styleR, sIdx, false, front, s.fog);
-      }
+      if (seg.flags & SEGF_RAIL_L) drawRail(s, -1, sIdx);
+      if (seg.flags & SEGF_RAIL_R) drawRail(s, +1, sIdx);
     }
 
     if (n >= 1 && s.n.z > NEAR_Z) {
-      if (seg.spriteType >= 0) {
-        float sx = s.n.x + s.n.scale * seg.spriteOffset() * ROAD_W * SCR_CX;
-        drawSceneSprite(seg.spriteType, sx, s.n.y, s.n.scale, s.fog);
+      for (int side = 0; side < 2; side++) {
+        if (seg.spr[side] < 0) continue;
+        float sx = s.n.x + s.n.scale * seg.sprX(side) * ROAD_W * SCR_CX;
+        drawSceneSprite(seg.spr[side], sx, s.n.y, s.n.scale, s.fog);
       }
-      if (seg.lamp) drawLamp(s.n, seg.lamp == 1 ? -1 : +1, s.fog);
+      if (seg.flags & SEGF_LAMP_L) drawLamp(s.n, -1, s.fog);
+      if (seg.flags & SEGF_LAMP_R) drawLamp(s.n, +1, s.fog);
+      if (seg.flags & SEGF_START) drawGantry(s.n, s.fog);
     }
 
-    // Traffic inside this segment
-    while (slotIdx < nSlots && slots[slotIdx].n > n) slotIdx++;
-    while (slotIdx < nSlots && slots[slotIdx].n == n) {
-      const CarSlot& cs = slots[slotIdx++];
-      const TrafficCar& car = trafficCars[cs.car];
-      float wz = bz[n] + cs.frac * SEG_LEN;
-      if (wz <= NEAR_Z * 4) continue;
-      float wy = lerpF(by[n], by[n + 1], cs.frac);
-      float wxC = lerpF(bx[n], bx[n + 1], cs.frac);
-      float wx = wxC + car.offset * ROAD_W;
-      ProjPt p;
-      project(p, wx, wy, wz);
-      float heading = atanf((bx[n + 1] - bx[n]) / SEG_LEN);
-      // 0.7: the road projection stretches x by 4:3, the full angle overdoes it
-      float view = atan2f(wx - sCamX, wz) * 0.7f;
-      float pitch = atan2f(sCamY - wy, wz) + atanf((by[n + 1] - by[n]) / SEG_LEN);
-      drawTrafficCar(p.x, p.y, p.scale, car.color, s.fog, heading - view, pitch,
-                     seg.tunnel != 0, wz / 234.0f);
-    }
+    cars_drawSlice(n, s.fog, tunnel);
 
-    if (seg.tunnel && !prevSeg.tunnel && n >= 1) drawPortal(s);
+    if (tunnel && !prevSeg.isTunnel() && n >= 1) drawPortal(s);
   }
   gfx_resetClip();
 }

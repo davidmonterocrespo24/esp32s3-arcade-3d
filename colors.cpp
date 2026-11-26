@@ -9,8 +9,13 @@
 #include <math.h>
 
 ColorSet pal;
-int   timeOfDay = 0;
-float dayCycle  = CYCLE_START;
+int   timeOfDay  = 0;
+float dayCycle   = 0.0f;
+int   colorTheme = 0;
+
+// What the palette was last built for (applyDayCycle skips rebuilds)
+static float sAppliedQ = -1.0f;
+static int   sAppliedTheme = -1;
 
 // ═══════════════════════════════════════════════════════════════
 //  BASIC HELPERS
@@ -97,7 +102,7 @@ static const Palette PALETTES[4] = {
   }
 };
 
-// Facade base colours (RGB888). Shaded per face from the palette light.
+// Facade base colours (RGB888), indexed by FacadeColor. Shaded per face.
 static const RGB8 FACADES[BUILDING_PALETTE] = {
   {150, 150, 156}, // concrete
   {164, 92, 72},   // brick
@@ -106,7 +111,36 @@ static const RGB8 FACADES[BUILDING_PALETTE] = {
   {72, 142, 142},  // teal
   {78, 78, 94},    // dark slate
   {214, 204, 184}, // cream
-  {154, 112, 82}   // rust
+  {154, 112, 82},  // rust
+  {238, 234, 224}, // white stucco (villas)
+  {196, 100, 62},  // terracotta (villa roofs)
+  {132, 118, 104}, // rock (cliffs)
+  {146, 144, 138}  // retaining wall grey
+};
+
+// Ground materials in daylight (light band, dark band). Other times of day
+// are derived with the road's day -> phase ratio, so they darken and tint
+// exactly like the tarmac next to them. MAT_GRASS uses the hand-tuned grass.
+static const RGB8 GROUND_DAY[MAT_COUNT][2] = {
+  { {54, 166, 50},   {38, 140, 38} },    // grass (replaced by the palette grass)
+  { {178, 174, 166}, {164, 160, 152} },  // sidewalk slabs
+  { {228, 208, 158}, {216, 196, 146} },  // sand
+  { {44, 118, 182},  {38, 106, 168} },   // water
+  { {128, 120, 110}, {116, 108, 100} },  // rock
+  { {240, 244, 252}, {224, 230, 242} },  // snow
+  { {152, 120, 82},  {138, 108, 74} }    // dirt
+};
+static const RGB8 KERB_DAY[2] = { {214, 212, 204}, {132, 130, 126} };
+
+// Per-theme tints (multipliers) for grass, fog and the two skyline layers
+struct ThemeTint { float grass[3], fog[3], far[3], nearL[3]; };
+static const ThemeTint TINTS[3] = {
+  // city: park grass, slightly bluer haze at night
+  { {0.92f, 0.96f, 0.92f}, {0.97f, 0.98f, 1.04f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f} },
+  // coast: dry yellow-green grass, warm haze, bluish islands
+  { {1.12f, 1.00f, 0.72f}, {1.04f, 1.00f, 0.95f}, {0.82f, 0.94f, 1.10f}, {0.80f, 0.92f, 1.06f} },
+  // mountain: deep alpine green, cold haze, blue ranges
+  { {0.78f, 0.94f, 0.86f}, {0.94f, 0.98f, 1.07f}, {0.86f, 0.94f, 1.10f}, {0.80f, 0.90f, 1.00f} }
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -117,6 +151,11 @@ static inline uint8_t lerp8(uint8_t a, uint8_t b, float t) {
 }
 static inline RGB8 lerpRGB(RGB8 a, RGB8 b, float t) {
   RGB8 r = { lerp8(a.r, b.r, t), lerp8(a.g, b.g, t), lerp8(a.b, b.b, t) };
+  return r;
+}
+static inline uint8_t sat8(float v) { return (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v + 0.5f)); }
+static inline RGB8 mulRGB(RGB8 c, const float* k) {
+  RGB8 r = { sat8(c.r * k[0]), sat8(c.g * k[1]), sat8(c.b * k[2]) };
   return r;
 }
 static inline uint16_t pack(RGB8 c) { return rgb(c.r, c.g, c.b); }
@@ -131,9 +170,17 @@ static inline uint16_t shadeRGB(RGB8 c, const float* light, const float* amb, fl
   return rgb((uint8_t)r, (uint8_t)g, (uint8_t)b);
 }
 
+void setTheme(int theme) {
+  if (theme < 0 || theme > 2) theme = 0;
+  colorTheme = theme;
+  setDayCycle(dayCycle);
+}
+
 void setDayCycle(float cycle) {
-  while (cycle >= 4.0f) cycle -= 4.0f;
-  while (cycle < 0.0f)  cycle += 4.0f;
+  if (!(cycle == cycle)) cycle = 0;            // NaN guard
+  cycle = fmodf(cycle, 4.0f);
+  if (cycle < 0.0f) cycle += 4.0f;
+  if (cycle >= 4.0f) cycle = 0.0f;
   dayCycle = cycle;
 
   int   phase = (int)cycle;
@@ -145,6 +192,7 @@ void setDayCycle(float cycle) {
 
   const Palette& A = PALETTES[phase & 3];
   const Palette& B = PALETTES[(phase + 1) & 3];
+  const ThemeTint& T = TINTS[colorTheme];
   timeOfDay = (t < 0.5f) ? (phase & 3) : ((phase + 1) & 3);
 
 #define MIX(f) RGB8 f = lerpRGB(A.f, B.f, t)
@@ -157,6 +205,12 @@ void setDayCycle(float cycle) {
   MIX(foliageL); MIX(foliageD); MIX(trunk); MIX(rock);
   MIX(lampPole); MIX(lampLight);
 #undef MIX
+
+  grassL = mulRGB(grassL, T.grass);
+  grassD = mulRGB(grassD, T.grass);
+  fog = mulRGB(fog, T.fog);
+  skylineFar = mulRGB(skylineFar, T.far);
+  skylineNear = mulRGB(skylineNear, T.nearL);
 
   pal.skyTop = pack(skyTop); pal.skyMid = pack(skyMid);
   pal.skyHorizon = pack(skyHorizon); pal.fog = pack(fog);
@@ -173,6 +227,18 @@ void setDayCycle(float cycle) {
   pal.foliageL = pack(foliageL); pal.foliageD = pack(foliageD);
   pal.trunk = pack(trunk); pal.rock = pack(rock);
   pal.lampPole = pack(lampPole); pal.lampLight = pack(lampLight);
+
+  // Ground materials: the day colour times the road's day -> now ratio
+  const RGB8 dayRoad = PALETTES[0].roadL;
+  float ratio[3] = { roadL.r / (float)dayRoad.r, roadL.g / (float)dayRoad.g, roadL.b / (float)dayRoad.b };
+  for (int m = 0; m < MAT_COUNT; m++) {
+    for (int k = 0; k < 2; k++) {
+      if (m == MAT_GRASS) pal.ground[m][k] = k ? pal.grassD : pal.grassL;
+      else pal.ground[m][k] = pack(mulRGB(GROUND_DAY[m][k], ratio));
+    }
+  }
+  pal.kerbL = pack(mulRGB(KERB_DAY[0], ratio));
+  pal.kerbD = pack(mulRGB(KERB_DAY[1], ratio));
 
   float light[3], amb[3], dir[3];
   for (int i = 0; i < 3; i++) {
@@ -197,19 +263,23 @@ void setDayCycle(float cycle) {
     pal.facadeFront[i] = shadeRGB(FACADES[i], light, amb, 0.55f);
     pal.roof[i]        = shadeRGB(FACADES[i], light, amb, 0.70f);
   }
+  sAppliedQ = floorf(cycle * 64.0f);
+  sAppliedTheme = colorTheme;
+}
+
+void applyDayCycle(float c) {
+  if (!(c == c)) c = 0;
+  c = fmodf(c, 4.0f);
+  if (c < 0) c += 4.0f;
+  if (c >= 4.0f) c = 0.0f;
+  // Rebuild only when the palette can actually change (blend window) or
+  // every 1/64 of a phase: ~150 colour conversions, cheap but not free.
+  float q = floorf(c * 64.0f);
+  float frac = c - (int)c;
+  if (frac > 1.0f - CYCLE_BLEND - 0.01f || q != sAppliedQ || sAppliedTheme != colorTheme) setDayCycle(c);
+  else dayCycle = c;
 }
 
 void advanceDayCycle(float distance) {
-  static float lastApplied = -1.0f;
-  float c = dayCycle + distance / CYCLE_PHASE_DIST;
-  if (c >= 4.0f) c -= 4.0f;
-  dayCycle = c;
-  // Rebuild the palette only when it can actually change (blend window)
-  // or every 1/64 of a phase — ~100 colour conversions, cheap but not free.
-  float q = floorf(c * 64.0f);
-  float frac = c - (int)c;
-  if (frac > 1.0f - CYCLE_BLEND - 0.01f || q != lastApplied) {
-    setDayCycle(c);
-    lastApplied = q;
-  }
+  applyDayCycle(dayCycle + distance / CYCLE_PHASE_DIST);
 }

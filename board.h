@@ -46,13 +46,19 @@
 
   // ---- Controls
   #define PIN_BTN_A       6     // D5  direct button (active low) -> BRAKE
-  #define PIN_BTN_B       44    // D7  direct button (active low) -> TURBO/start
+  #define PIN_BTN_B       44    // D7  direct button (active low) -> TURBO / confirm
   #define PIN_BTN_LADDER  3     // D2  six buttons on a resistor ladder (ADC)
   #define PIN_STICK_X     1     // D0  ADC
   #define PIN_STICK_Y     2     // D1  ADC
   #define STICK_DEADZONE  60
   #define STICK_INVERT_X  1     // X reads backwards on this unit
-  // Ladder windows measured on the unit (10k pull-up), position 5 = START
+  #define STICK_INVERT_Y  0     // raw Y grows when pushed UP (confirmed in the ports)
+  // Ladder windows measured on the unit (10k pull-up, 12-bit ADC):
+  //   W1 CIRCLE (back)   W2 CROSS (confirm)  W3 TRIANGLE  W4 L1
+  //   W5 START (pause / confirm)  W6 SELECT (back)  released above W6
+  #define LADDER_W1_MAX   350
+  #define LADDER_W2_MAX   1000
+  #define LADDER_W3_MAX   1700
   #define LADDER_W4_MAX   2450
   #define LADDER_W5_MAX   3100
   #define LADDER_W6_MAX   3700

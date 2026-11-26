@@ -1,26 +1,23 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  HUD AND SPEEDOMETER RENDERING IMPLEMENTATION
-  Translucent panels (alpha blending is free now that we own the
-  framebuffer), a segmented arc speedometer and a lap progress bar.
+  RACE HUD
+  Position, lap, race time, best lap, a lap progress bar with a dot
+  per racer, a minimap, turbo meter and a segmented speedometer, on
+  translucent panels.
   ═══════════════════════════════════════════════════════════════
 */
 
 #include "render_hud.h"
-#include "rendering.h"
+#include "gfx.h"
+#include "colors.h"
 #include "physics.h"
+#include "race.h"
+#include "circuits.h"
 #include "track.h"
+#include "ui.h"
 #include "utils.h"
 #include <math.h>
 #include <stdio.h>
-
-static void fmtTime(char* out, int n, float t) {
-  if (t < 0) t = 0;
-  int mins = (int)t / 60;
-  int secs = (int)t % 60;
-  int cs = (int)((t - (int)t) * 100);
-  snprintf(out, n, "%d:%02d.%02d", mins, secs, cs);
-}
 
 static void drawSpeedometer(float spd, float maxSpd) {
   const int cx = SCR_W - 44, cy = SCR_H - 38, r = 34;
@@ -58,45 +55,65 @@ static void drawSpeedometer(float spd, float maxSpd) {
   gfx_textCentered(cx, cy + 10, "KM/H", rgb(170, 170, 180), 1, COL_BLACK);
 }
 
+// Fraction of the current lap driven (0 on the grid, behind the line)
+static float lapFraction(const Racer& R) {
+  if (R.progress <= 0 || !(trackLength > 0)) return 0.0f;
+  return fmodf(R.progress, trackLength) / trackLength;
+}
+
 void drawHUD(float timeSec, float fps, float lcdFps, float frameMs) {
   char buf[48], tbuf[24];
+  const Racer& P = racers[PLAYER_ID];
+  const int laps = curCircuit().laps;
 
-  // Lap / time panel
-  gfx_fillRectMode(0, 0, 104, 36, COL_BLACK, GFX_BLEND, 15);
-  gfx_fillRect(0, 36, 104, 1, COL_RED);
-  snprintf(buf, sizeof(buf), "LAP %d/%d", currentLap, totalLaps);
-  gfx_textShadow(6, 4, buf, COL_WHITE, 2, COL_BLACK);
-  fmtTime(tbuf, sizeof(tbuf), currentLapTime);
+  // Position / lap panel
+  gfx_fillRectMode(0, 0, 96, 44, COL_BLACK, GFX_BLEND, 15);
+  gfx_fillRect(0, 44, 96, 1, COL_RED);
+  snprintf(buf, sizeof(buf), "POS %d/%d", P.place, NUM_RACERS);
+  gfx_textShadow(5, 4, buf, P.place == 1 ? COL_YELLOW : COL_WHITE, 2, COL_BLACK);
+  snprintf(buf, sizeof(buf), "LAP %d/%d", imin(P.lap + 1, laps), laps);
+  gfx_textShadow(5, 25, buf, COL_WHITE, 2, COL_BLACK);
+
+  // Race time / best lap
+  gfx_fillRectMode(SCR_W - 100, 0, 100, 26, COL_BLACK, GFX_BLEND, 15);
+  ui_fmtTime(tbuf, sizeof(tbuf), P.finished ? P.finishTime : raceTime);
   snprintf(buf, sizeof(buf), "TIME %s", tbuf);
-  gfx_textShadow(6, 24, buf, COL_YELLOW, 1, COL_BLACK);
+  gfx_textShadow(SCR_W - 94, 4, buf, COL_YELLOW, 1, COL_BLACK);
+  if (P.bestLap > 0) ui_fmtTime(tbuf, sizeof(tbuf), P.bestLap);
+  else snprintf(tbuf, sizeof(tbuf), "--:--.--");
+  snprintf(buf, sizeof(buf), "BEST %s", tbuf);
+  gfx_textShadow(SCR_W - 94, 15, buf, COL_GREEN, 1, COL_BLACK);
 
-  // Best / last lap
-  if (bestLapTime > 0) {
-    gfx_fillRectMode(SCR_W - 100, 0, 100, 26, COL_BLACK, GFX_BLEND, 15);
-    fmtTime(tbuf, sizeof(tbuf), bestLapTime);
-    snprintf(buf, sizeof(buf), "BEST %s", tbuf);
-    gfx_textShadow(SCR_W - 94, 4, buf, COL_GREEN, 1, COL_BLACK);
-    fmtTime(tbuf, sizeof(tbuf), lastLapTime);
-    snprintf(buf, sizeof(buf), "LAST %s", tbuf);
-    gfx_textShadow(SCR_W - 94, 15, buf, rgb(200, 200, 210), 1, COL_BLACK);
+  // Lap progress bar with a dot per racer (player on top)
+  {
+    const int x0 = 108, x1 = SCR_W - 110, y = 6;
+    const float w = (float)(x1 - x0);
+    gfx_fillRectMode(x0 - 2, y - 2, x1 - x0 + 4, 7, COL_BLACK, GFX_BLEND, 14);
+    float pp = lapFraction(P);
+    gfx_fillRect(x0, y, (int)(w * pp), 3, rgb(240, 200, 40));
+    for (int i = 0; i < NUM_RACERS; i++) {
+      if (i == PLAYER_ID) continue;
+      int dx = x0 + (int)(w * lapFraction(racers[i]));
+      gfx_fillRect(dx - 1, y, 3, 3, racers[i].paint ? racers[i].paint : rgb(60, 90, 220));
+    }
+    gfx_fillRect(x0 + (int)(w * pp) - 1, y - 2, 3, 7, COL_WHITE);
   }
 
-  // Lap progress bar with traffic dots
+  // Minimap with the racers
+  gfx_fillRectMode(2, SCR_H - 76, 62, 62, COL_BLACK, GFX_BLEND, 10);
+  ui_drawMinimap(5, SCR_H - 73, 56, true);
+
+  // Turbo meter
   {
-    const int x0 = 116, x1 = SCR_W - 108, y = 6;
-    float pos = (position + playerZdist) / trackLength;
-    pos -= floorf(pos);
-    gfx_fillRectMode(x0 - 2, y - 2, x1 - x0 + 4, 7, COL_BLACK, GFX_BLEND, 14);
-    gfx_fillRect(x0, y, (int)((x1 - x0) * pos), 3, rgb(240, 200, 40));
-    for (int i = 0; i < MAX_CARS; i++) {
-      float cp = trafficCars[i].z / trackLength;
-      gfx_pixel(x0 + (int)((x1 - x0) * cp), y + 1, trafficCars[i].color);
-    }
-    gfx_fillRect(x0 + (int)((x1 - x0) * pos) - 1, y - 2, 3, 7, COL_WHITE);
+    const int x = SCR_W - 94, y = SCR_H - 84, w = 60;
+    gfx_fillRectMode(x - 2, y - 2, w + 4, 7, COL_BLACK, GFX_BLEND, 16);
+    uint16_t c = boosting ? rgb(120, 200, 255) : rgb(40, 120, 230);
+    gfx_fillRect(x, y, (int)(w * turboMeter), 3, c);
+    gfx_text(x - 32, y - 2, "TURBO", rgb(150, 190, 255), 1);
   }
 
   if (autopilot && ((int)(timeSec * 2) & 1))
-    gfx_textCentered(SCR_CX, 18, "AUTO", rgb(120, 220, 255), 1, COL_BLACK);
+    gfx_textCentered(SCR_CX, 16, "AUTO", rgb(120, 220, 255), 1, COL_BLACK);
 
   drawSpeedometer(speed, maxSpeed);
 

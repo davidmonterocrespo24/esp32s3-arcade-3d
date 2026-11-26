@@ -38,4 +38,12 @@ void* plat_alloc_psram(size_t bytes);
 void  plat_log(const char* fmt, ...);
 void  plat_report_memory(const char* tag);
 
+// Persistent storage of one small blob (save data).
+//   ESP32   : Preferences / NVS (namespace "arcade3d", key "save")
+//   PC      : a small file next to the binary
+//   headless: disabled unless the harness passes --save
+// plat_load returns false when nothing (or a blob of another size) is stored.
+bool  plat_save(const void* data, size_t n);
+bool  plat_load(void* data, size_t n);
+
 #endif // PLATFORM_H

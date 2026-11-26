@@ -1,10 +1,16 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  PLAYER INPUT
-  The original game configured the two buttons but never read them
-  (handleInput was autopilot only). Steering is real now; when nobody
-  touches the controls for AUTOPILOT_IDLE_MS the autopilot takes over
-  (attract/demo mode) and hands control back on the next input.
+  PLAYER INPUT (one snapshot per frame; edges are derived by the
+  game from consecutive snapshots)
+
+  | Action  | XIAO handheld            | Dev board       | PC emulator        |
+  | Steer   | stick X                  | GPIO17 / GPIO16 | Left / Right       |
+  | Menu    | stick Y                  | (steer)         | Up / Down          |
+  | Brake   | A (D5)                   | -               | Space or Down      |
+  | Turbo   | B (D7)                   | -               | X or Left Shift    |
+  | Confirm | START, B or CROSS        | both buttons    | Enter              |
+  | Back    | SELECT or CIRCLE         | -               | Esc / Backspace    |
+  | Pause   | START                    | both buttons    | Enter              |
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -12,10 +18,13 @@
 #define INPUT_H
 
 struct InputState {
-  float steer;    // -1 (left) .. +1 (right)
-  bool  brake;
-  bool  start;    // start / confirm
-  bool  any;      // any control touched this frame
+  float steer;     // -1 .. +1
+  float stickY;    // -1 up .. +1 down (menus)
+  bool  brake, turbo;
+  bool  start;     // pause / skip
+  bool  confirm;   // menu accept
+  bool  back;      // menu back
+  bool  any;       // any control touched
 };
 
 void input_init();

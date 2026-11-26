@@ -1,5 +1,5 @@
 // display.h / input.h for the PC builds: frames go to a buffer the
-// frontend (Raylib window or PNG writer) picks up; input comes from it.
+// frontend (Raylib window or PPM writer) picks up; input comes from it.
 
 #include <string.h>
 #include "host_io.h"
@@ -7,7 +7,7 @@
 
 uint16_t   g_hostFrame[SCR_W * SCR_H];
 bool       g_hostFrameNew = false;
-InputState g_hostInput = { 0, false, false, false };
+InputState g_hostInput = { 0, 0, false, false, false, false, false, false };
 
 DisplayStats displayStats;
 

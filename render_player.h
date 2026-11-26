@@ -1,6 +1,6 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  3D CAR RENDERING (player + traffic share the same mesh renderer)
+  3D CAR RENDERING (player and rivals share the same mesh renderer)
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -26,15 +26,18 @@ struct CarRender {
   bool  shadow;          // draw the contact shadow
 };
 
+// Viewpoint the player's car is drawn from (rivals near the camera use it too)
+#define PLAYER_VIEW_PITCH 0.30f   // radians
+#define PLAYER_VIEW_DIST  11.0f   // eye distance in model units
+#define PLAYER_PX_PER_UNIT 27.0f
+
 // Copy the texture to internal RAM and tag its paint texels (call once).
 void initCarRenderer();
 
 // Draw one car with the current palette lighting.
 void renderCar(const CarRender& cr);
 
-// Player car, start screen, crash overlay
+// The player's car at its fixed screen position (after drawRoad)
 void drawPlayerCar(float timeSec);
-void drawStartScreen(float timeSec);
-void drawCrashMessage(float sinceCrashSec);
 
 #endif // RENDER_PLAYER_H

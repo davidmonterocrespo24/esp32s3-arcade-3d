@@ -7,6 +7,7 @@
 #if defined(ARDUINO_ARCH_ESP32)
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include "esp_heap_caps.h"
@@ -34,6 +35,24 @@ void plat_report_memory(const char* tag) {
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
+
+// ---- Save data in NVS (a few ms per write: only call it between races) ----
+bool plat_save(const void* data, size_t n) {
+  Preferences prefs;
+  if (!prefs.begin("arcade3d", false)) return false;
+  size_t w = prefs.putBytes("save", data, n);
+  prefs.end();
+  return w == n;
+}
+
+bool plat_load(void* data, size_t n) {
+  Preferences prefs;
+  // read-only open fails on the very first boot (namespace not created yet)
+  if (!prefs.begin("arcade3d", true)) return false;
+  bool ok = prefs.getBytesLength("save") == n && prefs.getBytes("save", data, n) == n;
+  prefs.end();
+  return ok;
 }
 
 #endif // ARDUINO_ARCH_ESP32

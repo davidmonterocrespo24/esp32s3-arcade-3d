@@ -1,10 +1,9 @@
 /*
   ═══════════════════════════════════════════════════════════════
   SKY AND PARALLAX BACKGROUND
-  The old version baked a fixed sunset into a 640x120 PSRAM sprite
-  (150 KB) and copied it every frame, so the day/night palette never
-  reached the sky. Now the background is stored as height maps
-  (~2 KB) and drawn every frame with the CURRENT palette.
+  The background is stored as height maps (~2 KB) and drawn every
+  frame with the CURRENT palette, so the day/night cycle reaches it.
+  Each circuit theme generates its own layers (deterministic Rng).
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -12,7 +11,6 @@
 
 #include "rendering.h"
 #include "utils.h"
-#include <Arduino.h>
 #include <math.h>
 
 float skyOffset = 0.0f;
@@ -21,49 +19,104 @@ float skyOffset = 0.0f;
 #define NUM_STARS  80
 #define NUM_CLOUDS 7
 
-static uint8_t sFarH[BG_W];          // distant hills / mountain ridge
-static uint8_t sNearH[BG_W];         // city skyline
+static uint8_t sFarH[BG_W];          // far layer: hills / islands / ranges
+static uint8_t sNearH[BG_W];         // near layer: skyline / ridges
 static uint8_t sNearId[BG_W];        // building id per column (window pattern)
+static uint8_t sSnow[BG_W];          // snow cap depth on the far layer (mountains)
 struct Star  { uint16_t x; uint8_t y, b; };
 struct Cloud { int16_t x; uint8_t y, w, h; };
 static Star  sStars[NUM_STARS];
 static Cloud sClouds[NUM_CLOUDS];
+static int   sTheme = 0;
 
-void initBackground() {
-  // Far ridge: a few octaves of sines with random phases, wrapping at BG_W
-  float ph[4];
-  for (int i = 0; i < 4; i++) ph[i] = random(0, 6283) / 1000.0f;
+static void genSines(uint8_t* out, Rng& rng, float base, const float* amp, const int* freq,
+                     int n, int lo, int hi) {
+  float ph[6];
+  for (int i = 0; i < n; i++) ph[i] = rng.frange(0, 6.2831853f);
   for (int x = 0; x < BG_W; x++) {
     float a = 2.0f * (float)PI * x / BG_W;
-    float h = 22.0f + 9.0f * sinf(a * 2 + ph[0]) + 6.0f * sinf(a * 5 + ph[1])
-            + 3.0f * sinf(a * 11 + ph[2]) + 1.5f * sinf(a * 23 + ph[3]);
-    sFarH[x] = (uint8_t)iclamp((int)h, 4, 60);
+    float h = base;
+    for (int i = 0; i < n; i++) h += amp[i] * sinf(a * freq[i] + ph[i]);
+    out[x] = (uint8_t)iclamp((int)h, lo, hi);
   }
+}
 
-  // City skyline: blocks of random width/height, a few gaps, antennas
+static void genSkyline(Rng& rng, int minH, int maxH, int lowChance) {
   int x = 0, id = 1;
   while (x < BG_W) {
-    int w = random(8, 26);
-    int h = (random(0, 6) == 0) ? random(4, 10) : random(14, 52);
+    int w = rng.range(8, 26);
+    int h = (rng.range(0, lowChance) == 0) ? rng.range(4, 10) : rng.range(minH, maxH);
     for (int i = 0; i < w && x + i < BG_W; i++) {
       sNearH[x + i] = (uint8_t)h;
       sNearId[x + i] = (uint8_t)id;
     }
-    if (h > 34 && w > 10) sNearH[x + w / 2] = (uint8_t)(h + random(4, 10));   // antenna
+    if (h > 34 && w > 10 && x + w / 2 < BG_W)
+      sNearH[x + w / 2] = (uint8_t)(h + rng.range(4, 10));   // antenna
     x += w;
     id++;
   }
+}
+
+void initBackground(int theme) {
+  sTheme = theme;
+  Rng rng(0xB6000u + (uint32_t)theme * 7919u);
+  for (int x = 0; x < BG_W; x++) { sFarH[x] = 0; sNearH[x] = 0; sNearId[x] = 0; sSnow[x] = 0; }
+
+  if (theme == 1) {
+    // COAST: open sea horizon with a few low islands far away
+    int x = rng.range(0, 60);
+    while (x < BG_W) {
+      int w = rng.range(30, 90), h = rng.range(4, 13);
+      for (int i = 0; i < w && x + i < BG_W; i++) {
+        float t = (float)i / w;
+        float s = sinf(t * (float)PI);
+        sFarH[x + i] = (uint8_t)(h * s * (0.85f + 0.15f * sinf(t * 19.0f)));
+      }
+      x += w + rng.range(60, 200);
+    }
+    // a headland on one side of the panorama (the near layer, darker)
+    int hx = rng.range(0, BG_W);
+    for (int i = 0; i < 120; i++) {
+      float t = (float)i / 120;
+      int h = (int)(20 * sinf(t * (float)PI) * (0.8f + 0.2f * sinf(t * 23.0f)));
+      sNearH[(hx + i) % BG_W] = (uint8_t)imax(0, h);
+    }
+  } else if (theme == 2) {
+    // MOUNTAIN: high ranges with snow caps, darker forested ridges in front
+    static const float A1[5] = { 16, 10, 6, 3, 1.5f };
+    static const int   F1[5] = { 2, 5, 9, 17, 31 };
+    genSines(sFarH, rng, 44, A1, F1, 5, 8, 80);
+    for (int x = 0; x < BG_W; x++) {
+      int h = sFarH[x];
+      sSnow[x] = (uint8_t)(h > 40 ? imin((h - 40) / 2 + 2, 16) : 0);
+    }
+    static const float A2[4] = { 7, 4, 2, 1 };
+    static const int   F2[4] = { 3, 7, 19, 43 };
+    genSines(sNearH, rng, 18, A2, F2, 4, 4, 40);
+  } else {
+    // CITY: hazy distant towers behind a dense skyline with lit windows
+    static const float A1[4] = { 9, 6, 3, 1.5f };
+    static const int   F1[4] = { 2, 5, 11, 23 };
+    genSines(sFarH, rng, 22, A1, F1, 4, 4, 60);
+    // blocky distant towers on the far layer
+    for (int x = 0; x < BG_W;) {
+      int w = rng.range(6, 16), h = rng.range(18, 46);
+      for (int i = 0; i < w && x + i < BG_W; i++) sFarH[x + i] = (uint8_t)imax(sFarH[x + i], h);
+      x += w + rng.range(0, 10);
+    }
+    genSkyline(rng, 14, 52, 6);
+  }
 
   for (int i = 0; i < NUM_STARS; i++) {
-    sStars[i].x = (uint16_t)random(0, BG_W);
-    sStars[i].y = (uint8_t)random(2, SCR_CY - 30);
-    sStars[i].b = (uint8_t)random(8, 33);
+    sStars[i].x = (uint16_t)rng.range(0, BG_W);
+    sStars[i].y = (uint8_t)rng.range(2, SCR_CY - 30);
+    sStars[i].b = (uint8_t)rng.range(8, 33);
   }
   for (int i = 0; i < NUM_CLOUDS; i++) {
-    sClouds[i].x = (int16_t)random(0, BG_W);
-    sClouds[i].y = (uint8_t)random(12, 62);
-    sClouds[i].w = (uint8_t)random(22, 48);
-    sClouds[i].h = (uint8_t)random(4, 8);
+    sClouds[i].x = (int16_t)rng.range(0, BG_W);
+    sClouds[i].y = (uint8_t)rng.range(12, 62);
+    sClouds[i].w = (uint8_t)rng.range(22, 48);
+    sClouds[i].h = (uint8_t)rng.range(4, 8);
   }
 }
 
@@ -154,17 +207,23 @@ void drawSky(float skyOff, float timeSec) {
     }
   }
 
-  // 5. Far ridge (hazy) and 6. city skyline, column by column
-  uint16_t farCol  = lerpCol(pal.skylineFar, pal.skyHorizon, 0.25f);
+  // 5. Far layer (hazy) and 6. near layer, column by column
+  uint16_t farCol  = lerpCol(pal.skylineFar, pal.skyHorizon, sTheme == 1 ? 0.45f : 0.25f);
   uint16_t nearCol = pal.skylineNear;
+  uint16_t snowCol = lerpCol(pal.ground[MAT_SNOW][0], pal.skyHorizon, 0.35f);
   int farOff  = (int)(skyOff * 0.5f);
   int nearOff = (int)skyOff;
-  int litA = (int)(pal.night * 30.0f);
+  int litA = (sTheme == 0) ? (int)(pal.night * 30.0f) : 0;
   for (int x = 0; x < SCR_W; x++) {
-    int fh = sFarH[wrapBG(x + farOff)];
-    gfx_vspan(x, horizon - fh, horizon, farCol);
+    int fx = wrapBG(x + farOff);
+    int fh = sFarH[fx];
+    if (fh) {
+      gfx_vspan(x, horizon - fh, horizon, farCol);
+      if (sSnow[fx]) gfx_vspan(x, horizon - fh, horizon - fh + sSnow[fx], snowCol);
+    }
     int wx = wrapBG(x + nearOff);
     int nh = sNearH[wx];
+    if (!nh) continue;
     gfx_vspan(x, horizon - nh, horizon, nearCol);
     // Windows: every 3rd column inside a building, every 3rd row
     if (litA > 2 && nh > 8 && (wx % 3) == 1) {

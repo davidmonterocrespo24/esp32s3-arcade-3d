@@ -7,3 +7,5 @@ emulator/screenshot.png
 *.ppm
 .claude/settings.local.json
 emulator/nul
+car_game_save.bin
+emulator/car_game_save.bin

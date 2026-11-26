@@ -65,3 +65,24 @@ void plat_log(const char* fmt, ...) {
 }
 
 void plat_report_memory(const char*) {}
+
+bool        g_emuSaveEnabled = true;
+std::string g_emuSavePath = "car_game_save.bin";
+
+bool plat_save(const void* data, size_t n) {
+  if (!g_emuSaveEnabled) return false;
+  FILE* f = fopen(g_emuSavePath.c_str(), "wb");
+  if (!f) return false;
+  bool ok = fwrite(data, 1, n, f) == n;
+  fclose(f);
+  return ok;
+}
+
+bool plat_load(void* data, size_t n) {
+  if (!g_emuSaveEnabled) return false;
+  FILE* f = fopen(g_emuSavePath.c_str(), "rb");
+  if (!f) return false;
+  bool ok = fread(data, 1, n, f) == n && fgetc(f) == EOF;   // exact size only
+  fclose(f);
+  return ok;
+}

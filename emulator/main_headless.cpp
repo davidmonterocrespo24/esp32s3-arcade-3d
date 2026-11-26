@@ -1,13 +1,29 @@
 // Headless frontend: runs the game on a virtual 30 Hz clock and writes
 // selected frames as PPM images. No window, no Raylib — builds anywhere with
-// a C++17 compiler (used to check the rendering without the hardware).
+// a C++17 compiler (used to check rendering and race logic without hardware).
 //
 //   car_game_headless <outdir> <frames> [options] [frame numbers to save...]
-//   options:  --cycle C       day cycle at start (0 day, 1 sunset, 2 night, 3 dawn)
-//             --pos Z         teleport the player to track position Z
-//             --steer A:B:V   steer V (-1..1) from frame A to frame B
-//             --brake A:B     hold the brake from frame A to frame B
-//             --title         keep the title screen (no auto start input)
+//
+//   --race C        skip title/menus: circuit C's grid + countdown
+//   --nocd          with --race / --gp: no countdown (GO at frame 1)
+//   --gp            start a Grand Prix from the first circuit
+//   --auto          the autopilot drives the player car for the whole run
+//   --diff D        difficulty 0 easy / 1 normal / 2 hard
+//   --cycle C       override the day cycle (0 day 1 sunset 2 night 3 dawn) and freeze it
+//   --pos Z         teleport the camera to track position Z right after GO
+//   --in A:B:SPEC   input from frame A to B; SPEC = comma list of
+//                   L,R,U,D,steer=V,brake,turbo,start,confirm,back
+//   --dump N        every N frames print the state and every racer
+//   --every N       save every Nth frame
+//   --title         no automatic presses (the title falls into the demo after 10 s)
+//   --save          enable save data (car_game_save.bin in the current folder)
+//   --segs F        at frame F print the 40 segments ahead of the camera
+//   --steer A:B:V / --brake A:B   (older forms of --in)
+//
+// Without --race / --gp / --title the harness walks title -> menu ->
+// QUICK RACE -> circuit 0 with scripted presses (frames 30, 50, 60, 80).
+// With --gp it presses confirm every 45 frames on the results / standings
+// screens so the whole Grand Prix runs.
 
 #include <chrono>
 #include <string>
@@ -17,11 +33,23 @@
 #include "host_io.h"
 #include "../colors.h"
 #include "../physics.h"
+#include "../race.h"
+#include "../game.h"
+#include "../circuits.h"
+#include "../track.h"
+#include "../utils.h"
 
 extern void setup();
 extern void loop();
 
-struct Range { int a, b; float v; };
+static int segsAt = -1;   // --segs F
+
+struct InSpec {
+  int a, b;
+  bool hasSteer = false, hasY = false;
+  float steer = 0, y = 0;
+  bool brake = false, turbo = false, start = false, confirm = false, back = false;
+};
 
 static void writePPM(const std::string& path) {
   FILE* f = fopen(path.c_str(), "wb");
@@ -38,39 +66,160 @@ static void writePPM(const std::string& path) {
   fclose(f);
 }
 
+static bool parseSpec(const char* arg, InSpec& s) {
+  char spec[256];
+  if (sscanf(arg, "%d:%d:%255s", &s.a, &s.b, spec) != 3) return false;
+  std::string all = spec;
+  size_t p = 0;
+  while (p <= all.size()) {
+    size_t q = all.find(',', p);
+    if (q == std::string::npos) q = all.size();
+    std::string t = all.substr(p, q - p);
+    if (t == "L") { s.hasSteer = true; s.steer = -1; }
+    else if (t == "R") { s.hasSteer = true; s.steer = 1; }
+    else if (t == "U") { s.hasY = true; s.y = -1; }
+    else if (t == "D") { s.hasY = true; s.y = 1; }
+    else if (t.rfind("steer=", 0) == 0) { s.hasSteer = true; s.steer = (float)atof(t.c_str() + 6); }
+    else if (t == "brake") s.brake = true;
+    else if (t == "turbo") s.turbo = true;
+    else if (t == "start") s.start = true;
+    else if (t == "confirm") s.confirm = true;
+    else if (t == "back") s.back = true;
+    else if (!t.empty()) { fprintf(stderr, "unknown input '%s'\n", t.c_str()); return false; }
+    p = q + 1;
+  }
+  return true;
+}
+
+static InSpec press(int f, const char* what) {
+  InSpec s;
+  parseSpec((std::to_string(f) + ":" + std::to_string(f) + ":" + what).c_str(), s);
+  return s;
+}
+
+static void dumpState(int f) {
+  printf("f=%d %s st=%.2f t=%.2f cyc=%.2f |", f, game_stateName(game_state()), game_stateTime(),
+         raceTime, dayCycle);
+  for (int i = 0; i < NUM_RACERS; i++) {
+    const Racer& R = racers[i];
+    printf(" %s P%d L%d z=%.0f x=%.2f v=%d%s%s |", R.name, R.place, R.lap, R.z, R.x,
+           (int)(R.speed * 300.0f / maxSpeed), R.finished ? " FIN" : "", (i == 0 && crashed) ? " CRASH" : "");
+  }
+  printf("\n");
+}
+
+// The 40 segments ahead of the camera:
+//   index: curve y | flags | ground L/R | build L/R (type:height) | sprites L/R
+static void dumpSegments() {
+  int b = findSegIdx(position);
+  printf("segments ahead of the camera (base %d of %d):\n", b, segCount);
+  for (int k = 0; k < 40; k++) {
+    int i = segWrap(b + k);
+    const Segment& s = segments[i];
+    printf("  %4d c=%5.2f y=%7.0f f=%02X g=%d/%d b=%d:%d/%d:%d s=%d@%.2f/%d@%.2f\n", i, s.curve, s.y,
+           s.flags, s.mat(0), s.mat(1), bldType(s.style[0]), s.build[0], bldType(s.style[1]), s.build[1],
+           s.spr[0], s.sprX(0), s.spr[1], s.sprX(1));
+  }
+}
+
+static void printResults() {
+  ResultRow rows[NUM_RACERS];
+  race_results(rows);
+  printf("classification (%s, %d segments, lap %.0f units):\n", curCircuit().name, segCount, trackLength);
+  for (int p = 0; p < NUM_RACERS; p++) {
+    const Racer& R = racers[rows[p].racer];
+    printf("  %d. %-6s %s %8.2f s  best lap %6.2f  laps %d  progress %.0f%s\n", p + 1, R.name,
+           rows[p].finished ? "FIN" : "est", rows[p].time, rows[p].bestLap, R.lap, R.progress,
+           game_isGP() ? "" : "");
+  }
+  if (game_isGP()) {
+    printf("GP points:");
+    for (int i = 0; i < NUM_RACERS; i++) printf(" %s=%d", racers[i].name, game_gpPoints(i));
+    printf("\n");
+  }
+}
+
 int main(int argc, char** argv) {
   g_emuVirtualClock = true;
+  g_emuSaveEnabled = false;
   std::string out = argc > 1 ? argv[1] : ".";
   int frames = argc > 2 ? atoi(argv[2]) : 300;
+  int raceC = -1, diff = -1, dumpN = 0, everyN = 0;
+  segsAt = -1;
   float cycle = -1, pos = -1;
-  bool title = false;
-  std::vector<Range> steer, brake;
+  bool title = false, gp = false, autoDrive = false, nocd = false;
+  std::vector<InSpec> inputs;
   std::set<int> shots;
   for (int i = 3; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--cycle" && i + 1 < argc) cycle = (float)atof(argv[++i]);
     else if (a == "--pos" && i + 1 < argc) pos = (float)atof(argv[++i]);
+    else if (a == "--race" && i + 1 < argc) raceC = atoi(argv[++i]);
+    else if (a == "--diff" && i + 1 < argc) diff = atoi(argv[++i]);
+    else if (a == "--dump" && i + 1 < argc) dumpN = atoi(argv[++i]);
+    else if (a == "--every" && i + 1 < argc) everyN = atoi(argv[++i]);
+    else if (a == "--segs" && i + 1 < argc) segsAt = atoi(argv[++i]);
     else if (a == "--title") title = true;
-    else if (a == "--steer" && i + 1 < argc) {
-      Range r; sscanf(argv[++i], "%d:%d:%f", &r.a, &r.b, &r.v); steer.push_back(r);
+    else if (a == "--gp") gp = true;
+    else if (a == "--auto") autoDrive = true;
+    else if (a == "--nocd") nocd = true;
+    else if (a == "--save") g_emuSaveEnabled = true;
+    else if (a == "--in" && i + 1 < argc) {
+      InSpec s;
+      if (parseSpec(argv[++i], s)) inputs.push_back(s);
+    } else if (a == "--steer" && i + 1 < argc) {
+      InSpec s;
+      if (sscanf(argv[++i], "%d:%d:%f", &s.a, &s.b, &s.steer) == 3) { s.hasSteer = true; inputs.push_back(s); }
     } else if (a == "--brake" && i + 1 < argc) {
-      Range r; sscanf(argv[++i], "%d:%d", &r.a, &r.b); r.v = 1; brake.push_back(r);
-    } else shots.insert(atoi(a.c_str()));
+      InSpec s;
+      if (sscanf(argv[++i], "%d:%d", &s.a, &s.b) == 2) { s.brake = true; inputs.push_back(s); }
+    } else if (!a.empty() && a[0] != '-') {
+      shots.insert(atoi(a.c_str()));
+    } else {
+      fprintf(stderr, "unknown option %s\n", a.c_str());
+    }
   }
 
+  gameDebug.autoDrive = autoDrive;
+  gameDebug.noCountdown = nocd;
+  gameDebug.teleportZ = pos;
+  if (cycle >= 0) { gameDebug.freezeCycle = true; gameDebug.cycle = cycle; }
+
   setup();
+  if (diff >= 0) difficulty = diff < 0 ? 0 : (diff > 2 ? 2 : diff);
   if (cycle >= 0) setDayCycle(cycle);
-  if (pos >= 0) position = pos;
+  if (raceC >= 0) game_debugStartRace(raceC);
+  else if (gp) game_debugStartGP();
+  else if (!title) {
+    // walk title -> menu -> QUICK RACE -> circuit 0
+    inputs.push_back(press(30, "confirm"));
+    inputs.push_back(press(50, "D"));
+    inputs.push_back(press(60, "confirm"));
+    inputs.push_back(press(80, "confirm"));
+  }
 
   const unsigned long stepMs = 33;
   double busy = 0;
   int timed = 0;
+  int lastAutoPress = -100;
   for (int f = 0; f <= frames; f++) {
-    InputState in = { 0, false, false, false };
-    for (auto& r : steer) if (f >= r.a && f <= r.b) in.steer = r.v;
-    for (auto& r : brake) if (f >= r.a && f <= r.b) in.brake = true;
-    if (!title && f == 30) in.start = true;         // leave the title screen
-    in.any = in.steer != 0 || in.brake || in.start;
+    InputState in = { 0, 0, false, false, false, false, false, false };
+    for (auto& s : inputs) {
+      if (f < s.a || f > s.b) continue;
+      if (s.hasSteer) in.steer = s.steer;
+      if (s.hasY) in.stickY = s.y;
+      in.brake |= s.brake; in.turbo |= s.turbo; in.start |= s.start;
+      in.confirm |= s.confirm; in.back |= s.back;
+    }
+    // A Grand Prix keeps going through the results and standings screens
+    if (gp) {
+      GameState st = game_state();
+      if ((st == GS_RESULTS || st == GS_STANDINGS) && game_stateTime() > 1.5f && f - lastAutoPress > 45) {
+        in.confirm = true;
+        lastAutoPress = f;
+      }
+    }
+    in.any = in.steer != 0 || in.stickY != 0 || in.brake || in.turbo || in.start || in.confirm || in.back;
     g_hostInput = in;
 
     g_emuNowMs += stepMs;
@@ -79,12 +228,16 @@ int main(int argc, char** argv) {
     auto t1 = std::chrono::steady_clock::now();
     if (f > 5) { busy += std::chrono::duration<double, std::milli>(t1 - t0).count(); timed++; }
 
-    if (shots.count(f)) {
+    if (dumpN > 0 && (f % dumpN) == 0) dumpState(f);
+    if (segsAt == f) dumpSegments();
+    if (shots.count(f) || (everyN > 0 && (f % everyN) == 0)) {
       char name[64];
       snprintf(name, sizeof(name), "/frame_%04d.ppm", f);
       writePPM(out + name);
     }
   }
+  dumpState(frames);
+  if (raceTime > 0) printResults();
   printf("frames %d, avg host loop %.3f ms\n", timed, timed ? busy / timed : 0.0);
   return 0;
 }

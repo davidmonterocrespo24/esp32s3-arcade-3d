@@ -28,12 +28,12 @@
 
 #include <Arduino.h>      // PROGMEM for the texture header
 #include "render_player.h"
-#include "rendering.h"
+#include "gfx.h"
+#include "colors.h"
 #include "config.h"
 #include "physics.h"
 #include "track.h"
 #include "utils.h"
-#include "render_road.h"
 #include "car2_mesh.h"
 #include "car2_texture.h"
 #include <math.h>
@@ -55,9 +55,12 @@ static uint16_t sPaintLUT[64];
 
 void initCarRenderer() {
   const size_t bytes = TEX_W * TEX_H * sizeof(uint16_t);
+  bool internal = true;
   sTex = (uint16_t*)plat_alloc_internal(bytes);
-  if (!sTex) sTex = (uint16_t*)plat_alloc_psram(bytes);
-  if (!sTex) return;
+  if (!sTex) { internal = false; sTex = (uint16_t*)plat_alloc_psram(bytes); }
+  if (!sTex) { plat_log("car: no memory for the texture\n"); return; }
+  plat_log("car: texture %dx%d (%u B) in %s\n", TEX_W, TEX_H, (unsigned)bytes,
+           internal ? "internal SRAM" : "PSRAM");
   for (int i = 0; i < TEX_W * TEX_H; i++) {
     uint16_t c = car2_texture[i];
     int r = ((c >> 11) & 31) * 255 / 31, g = ((c >> 5) & 63) * 255 / 63, b = (c & 31) * 255 / 31;
@@ -392,46 +395,52 @@ void renderCar(const CarRender& cr) {
 static float sSmoothPitch = 0.0f;
 
 void drawPlayerCar(float timeSec) {
+  if (segCount <= 0) return;
   int segIdx = findSegIdx(position + playerZdist);
-  Segment& seg = segments[segIdx];
+  const Segment& seg = segments[segIdx];
+  const bool tunnel = seg.isTunnel();
 
   // Road slope over a few segments, smoothed (same as the camera sees it)
   const int SLOPE_SAMPLES = 6;
-  float yStart = segments[segIdx].y;
-  float yEnd = segments[(segIdx + SLOPE_SAMPLES) % TOTAL_SEGS].y;
+  float yStart = seg.y;
+  float yEnd = segAt(segIdx + SLOPE_SAMPLES).y;
   float slope = (yEnd - yStart) / (SEG_LEN * SLOPE_SAMPLES);
   float roadPitch = clampF(atanf(slope) * 0.6f, -0.25f, 0.25f);
   sSmoothPitch += (roadPitch - sSmoothPitch) * 0.15f;
 
   float spPct = speed / maxSpeed;
-  // Engine/road vibration, stronger on the grass
+  // Engine/road vibration, stronger on rough ground
   float bounce = sinf(timeSec * 31.0f) * 0.5f * spPct + sinf(timeSec * 53.0f) * 2.2f * offRoad * spPct;
 
   CarRender cr;
   cr.ax = SCR_CX + steerVisual * 6.0f;
   cr.ay = SCR_H - 13 + bounce;
-  cr.pxPerUnit = 27.0f;
+  cr.pxPerUnit = PLAYER_PX_PER_UNIT;
   cr.yaw = steerVisual * 0.20f + driftAngle * 0.35f;
-  cr.pitch = 0.30f + sSmoothPitch;
+  if (crashed) {   // spin out, slowing down over the crash time
+    float t = clampF(crashTime / CRASH_TIME, 0, 1);
+    cr.yaw += (1.0f - (1.0f - t) * (1.0f - t)) * 2.0f * (float)PI;
+  }
+  cr.pitch = PLAYER_VIEW_PITCH + sSmoothPitch;
   cr.roll = -steerVisual * 0.035f - seg.curve * spPct * 0.006f;
-  cr.camDist = 11.0f;
+  cr.camDist = PLAYER_VIEW_DIST;
   cr.paint = PLAYER_PAINT;
   cr.fog = 0;
   cr.fogColor = pal.fog;
-  cr.tunnelLight = seg.tunnel != 0;
+  cr.tunnelLight = tunnel;
   // Tunnel: lights pass overhead every 4 segments
   float pulse = 1.0f;
-  if (seg.tunnel) {
+  if (tunnel) {
     float ph = fmodf((position + playerZdist) / (SEG_LEN * 4.0f), 1.0f);
     pulse = 0.55f + 0.45f * expf(-ph * ph * 30.0f);
   }
-  cr.lightScale = seg.tunnel ? pulse : 1.0f;
-  cr.lights = pal.night > 0.3f || seg.tunnel;
+  cr.lightScale = tunnel ? pulse : 1.0f;
+  cr.lights = pal.night > 0.3f || tunnel;
   cr.brake = braking;
   cr.shadow = true;
 
   // Headlight pool on the road ahead at night / in tunnels
-  float beam = seg.tunnel ? 0.6f : clampF((pal.night - 0.2f) * 1.4f, 0, 1);
+  float beam = tunnel ? 0.6f : clampF((pal.night - 0.2f) * 1.4f, 0, 1);
   if (beam > 0.02f) {
     int bx = (int)cr.ax, by = SCR_H - 78;
     gfx_fillEllipse(bx, by, 88, 20, pal.lampLight, GFX_ADD, (int)(5 * beam));
@@ -440,59 +449,11 @@ void drawPlayerCar(float timeSec) {
   }
 
   renderCar(cr);
-}
 
-// ═══════════════════════════════════════════════════════════════
-//  START SCREEN
-// ═══════════════════════════════════════════════════════════════
-void drawStartScreen(float timeSec) {
-  drawSky(timeSec * 12.0f, timeSec);
-  // Showroom floor: dark gradient with a soft spotlight
-  for (int y = SCR_CY; y < SCR_H; y++) {
-    float t = (float)(y - SCR_CY) / (SCR_H - SCR_CY);
-    gfx_ditherRow(y, 0, SCR_W, lerpCol(pal.skylineNear, COL_BLACK, 0.3f), rgb(8, 8, 14), t);
+  // Turbo: a short blue flame from the exhausts
+  if (boosting && !crashed) {
+    float fl = 0.7f + 0.3f * sinf(timeSec * 60.0f);
+    for (int s = -1; s <= 1; s += 2)
+      gfx_glow((int)(cr.ax + s * 16), (int)(cr.ay - 6), (int)(8 * fl), rgb(90, 160, 255), 28);
   }
-  gfx_fillEllipse(SCR_CX, 186, 120, 26, pal.sunGlow, GFX_ADD, 3);
-  gfx_fillEllipse(SCR_CX, 186, 92, 19, rgb(40, 40, 52), GFX_SOLID, 32);
-  gfx_fillEllipse(SCR_CX, 186, 88, 17, rgb(64, 64, 80), GFX_SOLID, 32);
-
-  CarRender cr;
-  cr.ax = SCR_CX; cr.ay = 188;
-  cr.pxPerUnit = 17.0f;
-  cr.yaw = timeSec * 1.1f + 2.4f;
-  cr.pitch = 0.32f;
-  cr.roll = 0;
-  cr.camDist = 14.0f;
-  cr.paint = PLAYER_PAINT;
-  cr.fog = 0; cr.fogColor = 0;
-  cr.lightScale = 1.0f;
-  cr.tunnelLight = false;
-  cr.lights = true;
-  cr.brake = false;
-  cr.shadow = true;
-  renderCar(cr);
-
-  // Title
-  gfx_fillRectMode(0, 14, SCR_W, 58, COL_BLACK, GFX_BLEND, 14);
-  gfx_fillRect(0, 16, SCR_W, 2, COL_RED);
-  gfx_fillRect(0, 69, SCR_W, 2, COL_RED);
-  gfx_textCentered(SCR_CX, 22, "ARCADE 3D", COL_WHITE, 4, rgb(150, 0, 0));
-  gfx_textCentered(SCR_CX, 56, "ESP32-S3 PSEUDO-3D RACER", COL_YELLOW, 1, COL_BLACK);
-
-  if (((int)(timeSec * 2.0f)) & 1)
-    gfx_textCentered(SCR_CX, 218, "STEER OR PRESS START", COL_WHITE, 1, COL_BLACK);
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  CRASH OVERLAY
-// ═══════════════════════════════════════════════════════════════
-void drawCrashMessage(float since) {
-  if (since < 0.3f) {   // impact flash
-    int a = (int)((1.0f - since / 0.3f) * 18.0f);
-    gfx_fillRectMode(0, 0, SCR_W, SCR_H, COL_WHITE, GFX_BLEND, a);
-  }
-  gfx_fillRectMode(0, SCR_CY - 22, SCR_W, 44, COL_BLACK, GFX_BLEND, 18);
-  gfx_fillRect(0, SCR_CY - 22, SCR_W, 2, COL_RED);
-  gfx_fillRect(0, SCR_CY + 20, SCR_W, 2, COL_RED);
-  gfx_textCentered(SCR_CX, SCR_CY - 10, "CRASH!", COL_RED, 3, COL_BLACK);
 }

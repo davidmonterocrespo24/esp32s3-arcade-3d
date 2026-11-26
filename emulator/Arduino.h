@@ -59,4 +59,9 @@ extern SerialMock Serial;
 extern bool          g_emuVirtualClock;
 extern unsigned long g_emuNowMs;
 
+// Save data (plat_save / plat_load): a small file next to the binary.
+// The headless harness disables it unless --save is given.
+extern bool          g_emuSaveEnabled;
+extern std::string   g_emuSavePath;
+
 #endif
