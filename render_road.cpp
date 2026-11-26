@@ -101,6 +101,13 @@ static inline int rowOf(float y) {
   return iclamp(r, 0, SCR_H);
 }
 
+// the same pixel-centre rule for screen columns
+static inline int colOf(float x) {
+  if (x < -1.0f) return 0;
+  if (x > SCR_W + 1.0f) return SCR_W;
+  return iclamp((int)ceilf(x - 0.5f), 0, SCR_W);
+}
+
 static inline void project(ProjPt& p, float wx, float wy, float wz) { roadProject(p, wx, wy, wz); }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -555,11 +562,42 @@ static void drawTunnelSeg(const SegView& s, int sIdx, bool farthest) {
   if (farthest)   // tunnel continues past the draw distance: dark opening
     gfx_fillQuad(lF, cyF, rF, cyF, rF, gF, lF, gF, COL_BLACK);
 
-  // Ceiling: segment-wise lining with a dark rib at the near edge
+  // Ceiling: rough concrete lining (texture, constant depth per row) with
+  // a dark rib at the near edge of every segment
   bool light = (sIdx & 1) == 0;
   uint16_t ceil = darkenCol(light ? pal.tunnelCeil : lerpCol(pal.tunnelCeil, COL_BLACK, 0.15f), 1.0f - dark);
-  gfx_fillQuad(lN, cyN, rN, cyN, rF, cyF, lF, cyF, ceil);
-  {
+  const float dyC = cyF - cyN;              // near edge is higher on screen
+  if (textures_ready() && dyC > 0.5f && s.n.z < TEX_MAX_Z) {
+    static uint16_t PC[TS_COUNT], PR[TS_COUNT];
+    tex_rowPalette(PC, RT_ROCK, light ? pal.tunnelCeil : lerpCol(pal.tunnelCeil, COL_BLACK, 0.15f), COL_BLACK,
+                   (int)(dark * 32.0f + 0.5f));
+    for (int i = 0; i < TS_COUNT; i++) PR[i] = darkenCol(PC[i], 0.6f);
+    const RowTex& T = tex_row(RT_ROCK);
+    const int y0 = imax(rowOf(cyN), gfx_cy0), y1 = imin(rowOf(cyF), gfx_cy1);
+    const float izN = 1.0f / s.n.z, izF = 1.0f / s.f.z, zNear = s.f.z - SEG_LEN;
+    for (int y = y0; y < y1; y++) {
+      const float t = clampF((y + 0.5f - cyN) / dyC, 0.0f, 1.0f);   // 0 near .. 1 far
+      const float iz = izN + (izF - izN) * t, z = 1.0f / iz;
+      const float xl = lN + (lF - lN) * t, xr = rN + (rF - rN) * t;
+      const float cx = (xl + xr) * 0.5f, hw = (xr - xl) * (0.5f / WALL_K);
+      if (hw < 1.0f) continue;
+      const float du = TEX_GROUND_U / hw;
+      const float dzdy = z * z * (izN - izF) / dyC;
+      const int l = mipFor(fmaxF(du, TEX_GROUND_V * dzdy));
+      const float zLoc = z - zNear;
+      const uint16_t* P = (zLoc < SEG_LEN * 0.16f) ? PR : PC;
+      if (l >= TEX_LEVELS) { gfx_hspan(y, colOf(xl), colOf(xr), P[TS_BASE]); continue; }
+      const int W = (1 << T.wLog2) >> l, H = (1 << T.hLog2) >> l;
+      const int vi = (int)floorf(((float)sIdx * SEG_LEN + zLoc) * TEX_GROUND_V / (float)(1 << l)) & (H - 1);
+      const int xa = colOf(xl), xb = colOf(xr);
+      float u0 = ((xa + 0.5f - cx) / hw * TEX_GROUND_U) / (float)(1 << l);
+      u0 = fmodf(u0, (float)W);
+      if (u0 < 0) u0 += (float)W;
+      gfx_texSpan(y, xa, xb, T.lev[l] + vi * W, (uint32_t)(u0 * 65536.0f),
+                  (int32_t)(du / (float)(1 << l) * 65536.0f), (uint32_t)(W - 1), P);
+    }
+  } else {
+    gfx_fillQuad(lN, cyN, rN, cyN, rF, cyF, lF, cyF, ceil);
     float m = 0.18f;
     float rlN = lN + (lF - lN) * m, rrN = rN + (rF - rN) * m, ryN = cyN + (cyF - cyN) * m;
     gfx_fillQuad(lN, cyN, rN, cyN, rrN, ryN, rlN, ryN, darkenCol(ceil, 0.6f));
@@ -843,7 +881,7 @@ static void drawGantry(const ProjPt& p, float fog) {
     for (int i = 0; i < TS_COUNT; i++)
       if (i != TS_DARK && i != TS_LIGHT && i != TS_SHADE && i != TS_TRIM && i != TS_EMITB) P[i] = P[TS_DARK];
     const int y0 = imax(rowOf(yt), gfx_cy0), y1 = imin(rowOf(yb), gfx_cy1);
-    const int x0 = imax(rowOf(lx), gfx_cx0), x1 = imin(rowOf(rx), gfx_cx1);
+    const int x0 = imax(colOf(lx), gfx_cx0), x1 = imin(colOf(rx), gfx_cx1);
     const float du = TEX_BANNER_W / bW;
     for (int y = y0; y < y1; y++) {
       int v = iclamp((int)((y + 0.5f - yt) / bH * TEX_BANNER_H), 0, TEX_BANNER_H - 1);
