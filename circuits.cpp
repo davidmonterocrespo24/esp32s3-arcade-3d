@@ -229,9 +229,28 @@ static const Design DESIGNS[NUM_CIRCUITS] = {
 //  1b. LAYOUT GENERATION
 // ═══════════════════════════════════════════════════════════════
 #define MAX_SECS 48
-static Sec sSec[MAX_SECS];             // working copy (the closure stretches two straights)
+// Build-time working data (only touched while a circuit is built): in PSRAM,
+// allocated once on the first build, so it costs no internal RAM.
+struct BuildScratch {
+  Sec   sec[MAX_SECS];                 // working copy (the closure stretches two straights)
+  int   secStart[MAX_SECS + 1];        // first segment of each section (+ end)
+  float head[MAX_SECS];                // plan heading at each section start
+  float pts[MINIMAP_PTS][2];           // minimap outline before fitting
+};
+static BuildScratch* sB = nullptr;
 static int sSecN = 0;
-static int sSecStart[MAX_SECS + 1];    // first segment of each section (+ end)
+#define sSec      (sB->sec)
+#define sSecStart (sB->secStart)
+
+static bool scratchInit() {
+  if (sB) return true;
+  bool psram = true;
+  sB = (BuildScratch*)plat_alloc_psram(sizeof(BuildScratch));
+  if (!sB) { psram = false; sB = (BuildScratch*)plat_alloc_internal(sizeof(BuildScratch)); }
+  if (!sB) { plat_log("circuit: no memory for the build scratch\n"); return false; }
+  plat_log("circuit: build scratch (%u B) in %s\n", (unsigned)sizeof(BuildScratch), psram ? "PSRAM" : "internal SRAM");
+  return true;
+}
 
 // Curvature weight of segment n of a corner: linear ramps over `ease`
 // segments at both ends. The weights of a whole corner add up to len - ease.
@@ -271,7 +290,7 @@ static void integratePlan(float& ex, float& ey, float* head) {
 
 // Stretch straights A and B so the loop closes: dA * uA + dB * uB = -end
 static void closeLoop() {
-  static float head[MAX_SECS];
+  float* head = sB->head;
   float ex, ey;
   integratePlan(ex, ey, head);
   int a = -1, b = -1;
@@ -713,7 +732,7 @@ static void decorateCoast() {
         }
         for (int i = i0; i < i1; i++) {
           if (i % 8 == 4 && !segments[i].isTunnel()) segments[i].flags |= SEGF_LAMP_R;
-          if (i % 3 == 0) {
+          if (i % 4 == 0) {
             int r = sRng.range(0, 10);
             if (r < 5) placeSprite(i, 0, (r & 1) ? SPR_UMBRELLA_B : SPR_UMBRELLA, sRng.frange(1.5f, 2.3f));
             else if (r < 7) placeSprite(i, 0, SPR_PALM, sRng.frange(1.4f, 2.0f));
@@ -815,7 +834,7 @@ static void decorateCoast() {
               placeSprite(i, side, SPR_POST, 1.15f);
             }
           }
-          if (i % 90 == 40) placeSprite(i, 1, SPR_BILLBOARD_A + sRng.range(0, 3), 3.0f);
+          if (i % 90 == 40) placeSprite(i, 1, SPR_BILLBOARD_A + sRng.range(0, 2), 3.0f);   // no neon by the sea
         }
         break;
       default: break;
@@ -885,7 +904,7 @@ static void decorateMountain() {
             break;
           }
           case MZ_FOREST:
-            if (h % 3 != 0) placeSprite(i, side, h % 11 == 1 ? SPR_ROCK : pine, sRng.frange(near + 0.15f, 4.2f));
+            if ((h & 1) == 0) placeSprite(i, side, h % 11 == 1 ? SPR_ROCK : pine, sRng.frange(near + 0.15f, 4.2f));
             else if (i % 12 == 6) placeSprite(i, side, snow ? SPR_SNOW_POLE : SPR_POST, 1.15f);
             break;
           case MZ_WALL_L: case MZ_WALL_R:
@@ -938,7 +957,7 @@ static void buildMinimap() {
   float kProp = (A > 1e-3f) ? 0.7f * diff / A : 0.0f;
   float kUni  = (A > 1e-3f) ? 0.3f * diff / N : diff / N;
 
-  static float pts[MINIMAP_PTS][2];
+  float (*pts)[2] = sB->pts;
   float h = 0, x = 0, y = 0;
   int j = 0;
   for (int i = 0; i < N; i++) {
@@ -988,6 +1007,7 @@ void buildCircuit(int id) {
   const CircuitInfo& info = CIRCUITS[id];
   sRng.setSeed(D.seed);
   sLastH[0] = sLastH[1] = 0;
+  if (!scratchInit()) { track_clear(); track_finish(); return; }
   genLayout(D);
   if (segCount <= 0) { plat_log("circuit: no segment buffer\n"); return; }
 

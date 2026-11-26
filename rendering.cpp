@@ -23,6 +23,7 @@
 
 #include "rendering.h"
 #include "utils.h"
+#include "platform.h"
 #include <math.h>
 
 float skyOffset = 0.0f;
@@ -34,12 +35,26 @@ float bgTime = 0.0f;
 #define NUM_ANTENNA 10
 #define SEA_H       7                // coast: rows of open sea above the camera horizon
 
-static uint8_t sFarH[BG_W];          // far layer: towers / islands / high ranges
-static uint8_t sMidH[BG_W];          // mid layer: tall towers / headlands / middle range
-static uint8_t sNearH[BG_W];         // near layer: dense blocks / - / forested ridge
-static uint8_t sNearId[BG_W];        // city: building id per column (window pattern)
-static uint8_t sMidId[BG_W];
-static uint8_t sSnow[BG_W];          // mountain: snow depth on the far / mid layer (low / high nibble)
+// The per-column maps (4.5 KB) live in PSRAM, allocated once on the first
+// initBackground(): a few thousand byte reads per frame, column by column,
+// are cheap through the cache and keep the internal RAM for pixels.
+struct BgMaps {
+  uint8_t farH[BG_W];                // far layer: towers / islands / high ranges
+  uint8_t midH[BG_W];                // mid layer: tall towers / headlands / middle range
+  uint8_t nearH[BG_W];               // near layer: dense blocks / - / forested ridge
+  uint8_t nearId[BG_W];              // city: building id per column (window pattern)
+  uint8_t midId[BG_W];
+  uint8_t snow[BG_W];                // mountain: snow depth on the far / mid layer (low / high nibble)
+  uint8_t facing[BG_W];              // bit 0 / 1: the far / mid slope faces right
+};
+static BgMaps* sBg = nullptr;
+#define sFarH   (sBg->farH)
+#define sMidH   (sBg->midH)
+#define sNearH  (sBg->nearH)
+#define sNearId (sBg->nearId)
+#define sMidId  (sBg->midId)
+#define sSnow   (sBg->snow)
+#define sFacing (sBg->facing)
 struct Star    { uint16_t x; uint8_t y, b; };
 struct Cloud   { int16_t x; uint8_t y, w, h, puffs; };
 struct Antenna { int16_t x; uint8_t h; uint8_t phase; };
@@ -75,7 +90,6 @@ static void genSines(uint8_t* out, Rng& rng, float base, const float* amp, const
 
 // Which way each column of a layer faces (bit set = the slope faces right),
 // from a wide stencil so small bumps do not flicker between lit and shaded.
-static uint8_t sFacing[BG_W];        // bit 0 far layer, bit 1 mid layer
 static void computeFacing(const uint8_t* h, uint8_t bit) {
   for (int x = 0; x < BG_W; x++) {
     int s = (int)h[(x + 6) % BG_W] - (int)h[(x + BG_W - 6) % BG_W];
@@ -125,8 +139,19 @@ static void hump(uint8_t* h, int x0, int w, int ph, float rough, Rng& rng) {
   }
 }
 
+static bool bgAlloc() {
+  if (sBg) return true;
+  bool psram = true;
+  sBg = (BgMaps*)plat_alloc_psram(sizeof(BgMaps));
+  if (!sBg) { psram = false; sBg = (BgMaps*)plat_alloc_internal(sizeof(BgMaps)); }
+  if (!sBg) { plat_log("background: no memory for the maps\n"); return false; }
+  plat_log("background: maps (%u B) in %s\n", (unsigned)sizeof(BgMaps), psram ? "PSRAM" : "internal SRAM");
+  return true;
+}
+
 void initBackground(int theme) {
   sTheme = theme;
+  if (!bgAlloc()) return;
   Rng rng(0xB6000u + (uint32_t)theme * 7919u);
   for (int x = 0; x < BG_W; x++) {
     sFarH[x] = sMidH[x] = sNearH[x] = 0;
@@ -473,7 +498,8 @@ void drawSky(float skyOff, float timeSec) {
   drawClouds(skyOff, timeSec);
 
   // 5. The theme's background layers
-  if (sTheme == 1) drawCoastLayers(skyOff, timeSec, sunX);
+  if (!sBg) {}
+  else if (sTheme == 1) drawCoastLayers(skyOff, timeSec, sunX);
   else if (sTheme == 2) drawMountainLayers(skyOff);
   else drawCityLayers(skyOff, timeSec);
 

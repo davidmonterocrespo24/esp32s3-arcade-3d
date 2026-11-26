@@ -62,14 +62,21 @@ static void drawPine(float sx, float sy, float scale, float fog, bool snow) {
   float h = scale * 3200.0f * SCR_CY, w = scale * 1300.0f * SCR_CX;
   if (h < 3) return;
   uint16_t dk = fogF(pal.foliageD, fog), lt = fogF(pal.foliageL, fog);
-  if (h < 8) {                                   // LOD: one triangle
+  uint16_t sn = fogF(lerpCol(pal.ground[MAT_SNOW][0], pal.foliageL, 0.15f), fog);
+  if (h < 8) {                                   // far: one triangle
     gfx_fillTri(sx, sy - h, sx - w * 0.5f, sy, sx + w * 0.5f, sy, snow ? lt : dk);
+    return;
+  }
+  if (h < 34) {                                  // mid distance: one cone, shaded halves
+    float base = sy - h * 0.10f;
+    gfx_fillTri(sx, sy - h, sx - w * 0.5f, base, sx, base, dk);
+    gfx_fillTri(sx, sy - h, sx, base, sx + w * 0.5f, base, lt);
+    if (snow) gfx_fillTri(sx, sy - h, sx - w * 0.2f, sy - h * 0.62f, sx + w * 0.2f, sy - h * 0.62f, sn);
     return;
   }
   groundShadow(sx, sy, w, fog);
   float tw = fmaxF(1.0f, w * 0.12f), th = h * 0.16f;
   rectF(sx - tw * 0.5f, sy - th, sx + tw * 0.5f, sy, fogF(pal.trunk, fog));
-  uint16_t sn = fogF(lerpCol(pal.ground[MAT_SNOW][0], pal.foliageL, 0.15f), fog);
   for (int i = 0; i < 3; i++) {   // three tiers, shaded halves
     float base = sy - th - h * 0.25f * i, top = base - h * 0.42f, half = w * (0.5f - 0.12f * i);
     gfx_fillTri(sx, top, sx - half, base, sx, base, dk);
@@ -86,7 +93,8 @@ static void drawTree(float sx, float sy, float scale, float fog, float H, float 
   if (h < 3) return;
   uint16_t dk = fogF(pal.foliageD, fog), lt = fogF(street ? lerpCol(pal.foliageL, COL_YELLOW, 0.08f) : pal.foliageL, fog);
   float r = w * 0.5f;
-  if (h < 8) {
+  if (h < 26) {                                  // far / mid: trunk + one crown
+    if (h >= 8) pole(sx, sy, sy - h * 0.5f, w * 0.08f, fogF(pal.trunk, fog));
     gfx_fillEllipse((int)sx, (int)(sy - h + r), (int)fmaxF(1, r), (int)fmaxF(1, r * 0.9f), dk);
     return;
   }
@@ -112,6 +120,15 @@ static void drawPalm(float sx, float sy, float scale, float fog) {
   if (h < 8) {
     pole(sx, sy, sy - h, 1, trunk);
     gfx_fillEllipse((int)(sx + w * 0.16f), (int)(sy - h), (int)fmaxF(1, w * 0.3f), 1, dk);
+    return;
+  }
+  if (h < 30) {                                  // mid distance: straight trunk, four fronds
+    float tx = sx + w * 0.16f, ty = sy - h, r = w * 0.5f;
+    gfx_fillQuad(sx - 0.5f, sy, sx + 0.5f, sy, tx + 0.5f, ty, tx - 0.5f, ty, trunk);
+    float th = fmaxF(1.0f, r * 0.16f);
+    gfx_fillTri(tx, ty - th, tx - r, ty + r * 0.35f, tx, ty + th, dk);
+    gfx_fillTri(tx, ty - th, tx + r, ty + r * 0.35f, tx, ty + th, lt);
+    gfx_fillTri(tx, ty, tx - r * 0.5f, ty - r * 0.3f, tx + r * 0.5f, ty - r * 0.3f, lt);
     return;
   }
   groundShadow(sx, sy, w * 0.6f, fog);
@@ -170,7 +187,7 @@ static void drawFlowers(float sx, float sy, float scale, float fog) {
   gfx_fillEllipse((int)sx, (int)(sy - h * 0.35f), (int)(w * 0.5f), (int)fmaxF(1, h * 0.45f),
                   fogF(lerpCol(pal.foliageD, pal.grassD, 0.4f), fog));
   static const uint8_t COLS[4] = { PC_RED, PC_YELLOW, PC_WHITE, PC_PURPLE };
-  if (w < 7) {
+  if (w < 14) {
     gfx_fillRect((int)(sx - 1), (int)(sy - h * 0.6f), 2, 1, propC(PC_RED, fog));
     return;
   }
@@ -187,7 +204,7 @@ static void drawGrassTuft(float sx, float sy, float scale, float fog) {
   float w = scale * 520.0f * SCR_CX, h = scale * 330.0f * SCR_CY;
   if (h < 2) return;
   uint16_t a = fogF(lerpCol(pal.foliageL, pal.grassL, 0.5f), fog), b = fogF(pal.foliageD, fog);
-  if (h < 5) { gfx_fillTri(sx, sy - h, sx - w * 0.3f, sy, sx + w * 0.3f, sy, b); return; }
+  if (h < 9) { gfx_fillTri(sx, sy - h, sx - w * 0.3f, sy, sx + w * 0.3f, sy, b); return; }
   static const float BL[5][2] = { { -0.42f, 0.7f }, { -0.18f, 1.0f }, { 0.04f, 0.85f }, { 0.26f, 0.95f }, { 0.46f, 0.6f } };
   float bw = fmaxF(1.0f, w * 0.08f);
   for (int k = 0; k < 5; k++) {
@@ -234,7 +251,7 @@ static void drawSnowPole(float sx, float sy, float scale, float fog) {
   float h = scale * 1150.0f * SCR_CY, w = fmaxF(1.0f, scale * 60.0f * SCR_CX);
   if (h < 2) return;
   uint16_t a = propC(PC_ORANGE, fog), b = propC(PC_BLACK, fog);
-  if (h < 8) { pole(sx, sy, sy - h, w, a); return; }
+  if (h < 14) { pole(sx, sy, sy - h, w, a); return; }
   for (int k = 0; k < 5; k++)
     rectF(sx - w * 0.5f, sy - h * (k + 1) / 5.0f, sx + w * 0.5f, sy - h * k / 5.0f, (k & 1) ? b : a);
   if (pal.night > 0.3f)
@@ -248,12 +265,19 @@ static void drawChevron(float sx, float sy, float scale, float fog, bool right) 
   uint16_t board = propC(PC_BLACK, fog), arrow = propC(PC_YELLOW, fog);
   float yt = sy - h1, yb = sy - h0;
   if (w < 6) { rectF(sx - w * 0.5f, yt, sx + w * 0.5f, yb, arrow); return; }
-  uint16_t post = propC(PC_METAL, fog);
-  pole(sx - w * 0.3f, sy, yb, scale * 50.0f * SCR_CX, post);
-  pole(sx + w * 0.3f, sy, yb, scale * 50.0f * SCR_CX, post);
   rectF(sx - w * 0.5f, yt, sx + w * 0.5f, yb, board);
   float ym = (yt + yb) * 0.5f, pad = (yb - yt) * 0.16f;
   float a = w * 0.10f, t = fmaxF(1.0f, w * 0.07f), d = right ? 1.0f : -1.0f;
+  if (w < 18) {                                  // mid distance: three solid arrow heads
+    for (int k = -1; k <= 1; k++) {
+      float cx = sx + k * w * 0.30f;
+      gfx_fillTri(cx - d * a, yt + pad, cx + d * a, ym, cx - d * a, yb - pad, arrow);
+    }
+    return;
+  }
+  uint16_t post = propC(PC_METAL, fog);
+  pole(sx - w * 0.3f, sy, yb, scale * 50.0f * SCR_CX, post);
+  pole(sx + w * 0.3f, sy, yb, scale * 50.0f * SCR_CX, post);
   for (int k = -1; k <= 1; k++) {
     float cx = sx + k * w * 0.30f;
     float x0 = cx - d * a, x1 = cx + d * a;    // arm start (back) and tip
@@ -392,7 +416,7 @@ static void drawNeon(float sx, float sy, float scale, float fog, bool pink) {
   float yt = sy - h1, yb = sy - h0;
   rectF(sx - w * 0.5f, yt, sx + w * 0.5f, yb, panel);
   float b = fmaxF(1.0f, w * 0.12f);
-  if (w < 4) { rectF(sx - w * 0.25f, yt, sx + w * 0.25f, yb, lit); return; }
+  if (w < 7) { rectF(sx - w * 0.25f, yt, sx + w * 0.25f, yb, lit); return; }
   rectF(sx - w * 0.5f, yt, sx + w * 0.5f, yt + b, lit);
   rectF(sx - w * 0.5f, yb - b, sx + w * 0.5f, yb, lit);
   rectF(sx - w * 0.5f, yt, sx - w * 0.5f + b, yb, lit);
@@ -411,7 +435,7 @@ static void drawNeon(float sx, float sy, float scale, float fog, bool pink) {
   }
   if (n > 0.2f && h1 > 12) {
     int a = (int)(14 * n * (1 - fog));
-    gfx_glow((int)sx, (int)((yt + yb) * 0.5f), (int)fmaxF(4, (yb - yt) * 0.55f), tube, a);
+    gfx_glow((int)sx, (int)((yt + yb) * 0.5f), (int)fminF(28.0f, fmaxF(4, (yb - yt) * 0.55f)), tube, a);
   }
 }
 
@@ -462,7 +486,7 @@ static void drawUmbrella(float sx, float sy, float scale, float fog, bool blue) 
   if (h < 2) return;
   uint16_t ca = propC(blue ? PC_BLUE : PC_RED, fog), cb = propC(blue ? PC_YELLOW : PC_WHITE, fog);
   float top = sy - h, rim = sy - h * 0.70f;
-  if (h < 6) { gfx_fillTri(sx, top, sx - w * 0.5f, rim, sx + w * 0.5f, rim, ca); return; }
+  if (h < 14) { pole(sx, sy, top, 1, propC(PC_WHITE, fog)); gfx_fillTri(sx, top, sx - w * 0.5f, rim, sx + w * 0.5f, rim, ca); return; }
   if (pal.night < 0.7f)   // shade on the sand
     gfx_fillEllipse((int)(sx + w * 0.08f), (int)sy, (int)(w * 0.45f), (int)fmaxF(1, h * 0.06f), COL_BLACK, GFX_BLEND,
                     (int)(9 * (1 - pal.night) * (1 - fog)));
