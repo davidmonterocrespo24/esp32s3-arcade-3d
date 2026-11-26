@@ -8,6 +8,7 @@
 #define RENDER_PLAYER_H
 
 #include <stdint.h>
+#include "config.h"
 
 struct CarRender {
   float ax, ay;          // screen anchor: the car's ground centre
@@ -39,5 +40,30 @@ void renderCar(const CarRender& cr);
 
 // The player's car at its fixed screen position (after drawRoad)
 void drawPlayerCar(float timeSec);
+
+// ═══════════════════════════════════════════════════════════════
+//  ADDITIONS (feature phase)
+// ═══════════════════════════════════════════════════════════════
+// Screen anchor of the player's car: its ground centre is drawn here
+// (bounce excluded). Rivals near the player use the same "car camera".
+#define PLAYER_ANCHOR_Y   (SCR_H - 13)
+#define PLAYER_STEER_PX   6.0f        // anchor x shift per unit of steerVisual
+
+// Level of detail for renderCarLod (render_cars picks it with hysteresis)
+enum CarLod : uint8_t {
+  CAR_LOD_FULL = 0,   // Gouraud diffuse + specular + sky reflection, two shadow rings
+  CAR_LOD_MID,        // diffuse + ambient only, one shadow ring (small cars)
+};
+
+// renderCar() at a chosen level of detail (renderCar == CAR_LOD_FULL).
+void renderCarLod(const CarRender& cr, int lod);
+
+// Turbo flame from the two exhausts of a car drawn with `cr` (call right
+// after rendering it). strength 0..1 (e.g. fading in/out), time for flicker.
+void renderCarFlame(const CarRender& cr, float strength, float timeSec);
+
+// The player's road-slope pitch as drawn this frame (radians, smoothed),
+// so rivals beside the player can be pitched the same way.
+float playerViewSlope();
 
 #endif // RENDER_PLAYER_H

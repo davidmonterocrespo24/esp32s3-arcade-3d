@@ -1,6 +1,9 @@
 /*
   ═══════════════════════════════════════════════════════════════
   RACE STATE — implementation
+  Grid, progress, laps (sub-frame crossing times), finish, places every
+  frame, and the final classification with estimated times for racers
+  that have not finished when the results appear.
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -50,6 +53,16 @@ static float wrapZ(float z) {
   return loopIncrease(z, 0, trackLength);
 }
 
+void race_syncPlayer() {
+  Racer& P = racers[PLAYER_ID];
+  P.z = wrapZ(position + playerZdist);
+  P.x = playerX;
+  P.speed = speed;
+  P.braking = braking;
+  P.boosting = boosting;
+  P.yaw = steerVisual * 0.20f + driftAngle * 0.35f;
+}
+
 void race_init() {
   raceTime = 0;
   raceRunning = false;
@@ -88,14 +101,7 @@ void race_update(float dt) {
   if (raceRunning) raceTime += dt;
   const int laps = curCircuit().laps;
 
-  // Mirror the player's car
-  Racer& P = racers[PLAYER_ID];
-  P.z = wrapZ(position + playerZdist);
-  P.x = playerX;
-  P.speed = speed;
-  P.braking = braking;
-  P.boosting = boosting;
-  P.yaw = steerVisual * 0.20f + driftAngle * 0.35f;
+  race_syncPlayer();
 
   for (int i = 0; i < NUM_RACERS; i++) {
     Racer& R = racers[i];
@@ -104,7 +110,7 @@ void race_update(float dt) {
     sPrevZ[i] = R.z;
     if (!raceRunning) continue;
 
-    int completed = R.progress > 0 ? (int)(R.progress / trackLength) : 0;
+    int completed = (R.progress > 0 && trackLength > 0) ? (int)(R.progress / trackLength) : 0;
     while (!R.finished && R.lap < completed) {
       R.lap++;
       // sub-frame crossing time
@@ -131,6 +137,12 @@ int race_order(int place) {
   return sOrder[iclamp(place - 1, 0, NUM_RACERS - 1)];
 }
 
+float race_lapTime(int i) {
+  if (i < 0 || i >= NUM_RACERS || !raceRunning) return 0.0f;
+  const Racer& R = racers[i];
+  return R.progress > 0 ? fmaxF(0.0f, raceTime - R.lapStart) : 0.0f;
+}
+
 void race_results(ResultRow out[NUM_RACERS]) {
   const float dist = race_distance();
   for (int p = 0; p < NUM_RACERS; p++) {
@@ -143,8 +155,14 @@ void race_results(ResultRow out[NUM_RACERS]) {
     if (R.finished) {
       row.time = R.finishTime;
     } else {
-      float covered = R.progress - sStartProgress[i];
-      float pace = (raceTime > 1.0f && covered > 0) ? covered / raceTime : 0.0f;
+      // Pace: the last full lap is the best predictor (racing speed, no
+      // standing start); before that, the average since the start.
+      float pace = 0.0f;
+      if (R.lastLap > 1.0f) pace = trackLength / R.lastLap;
+      if (pace <= 0.0f) {
+        float covered = R.progress - sStartProgress[i];
+        if (raceTime > 1.0f && covered > 0) pace = covered / raceTime;
+      }
       if (pace < maxSpeed * 0.3f) pace = maxSpeed * 0.3f;
       float remain = dist - R.progress;
       if (remain < 0) remain = 0;
