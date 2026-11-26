@@ -3,6 +3,13 @@
   PLAYER CAR PHYSICS — implementation
   All "per frame" factors are defined at 60 Hz and rescaled with
   powf(f, dt*60).
+
+  Frame order (game.cpp): handleInput -> updatePhysics -> checkCollisions
+  (walls, rails, tunnels, building faces, scenery, water) ->
+  rivals_update, which moves the rivals and then calls
+  physics_resolveContacts() so every car-to-car bump is resolved with
+  all cars at the same time step (resolving them before the rivals
+  moved compared positions one frame apart: ~400 units at full speed).
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -37,6 +44,14 @@ bool  boosting     = false;
 float turboMeter   = 1;
 bool  autopilot    = false;
 float offRoad      = 0;
+float rocketTime   = 0;
+bool  rocketStarted = false;
+float bumpShake    = 0;
+float draft        = 0;
+
+static bool sTurboPrev  = false;   // turbo input of the previous frame (press edges)
+static bool sFirstInput = true;    // first handleInput of this race (input held before GO)
+static float sKickVX    = 0;       // part of velocityX that came from a contact bounce
 
 static inline float perFrame(float f, float dt) { return powf(f, dt * 60.0f); }
 
@@ -57,6 +72,34 @@ void physics_placePlayer(float camPos, float x) {
   boosting     = false;
   turboMeter   = 1;
   offRoad      = 0;
+  rocketTime   = 0;
+  rocketStarted = false;
+  bumpShake    = 0;
+  draft        = 0;
+  sTurboPrev   = false;
+  sFirstInput  = true;
+  sKickVX      = 0;
+}
+
+float physics_cruiseAccel(float top) {
+  // friction removes speed * (1 - FRICTION^60) per second
+  return top * ACCEL_NEAR_MAX * (1.0f - powf(FRICTION, 60.0f));
+}
+
+float physics_draftOf(int i) {
+  if (i < 0 || i >= NUM_RACERS || trackLength <= 0) return 0.0f;
+  const Racer& me = racers[i];
+  if (me.speed < maxSpeed * 0.5f) return 0.0f;      // only at speed
+  float best = 0.0f;
+  for (int j = 0; j < NUM_RACERS; j++) {
+    if (j == i) continue;
+    const Racer& o = racers[j];
+    float gap = wrapDelta(me.z, o.z, trackLength) - CAR_LEN;   // bumper to bumper
+    if (gap < -CAR_LEN * 0.1f || gap > DRAFT_RANGE) continue;
+    if (fabsf(o.x - me.x) >= DRAFT_WIDTH) continue;
+    best = fmaxF(best, 1.0f - fmaxF(gap, 0.0f) / DRAFT_RANGE);
+  }
+  return best;
 }
 
 void initPhysics() {
@@ -74,58 +117,73 @@ void initPhysics() {
 void handleInput(float dt, const InputState& in) {
   const float playerZ = position + playerZdist;
   const float spPct = speed / maxSpeed;
-  bool autoBrake = false;
+  const float authority = 0.25f + 0.75f * clampF(spPct * 1.5f, 0, 1);   // no turning on the spot
+  bool brakeIn, turboIn;
   float steerCmd;
 
   if (autopilot) {
-    // Racing line + corner speed (same helpers as the rivals), and a lane
-    // change around any car ahead in the way.
-    float target = ai_lineTarget(playerZ, 0.0f);
-    float nearest = 1e9f;
-    for (int i = 0; i < NUM_RACERS; i++) {
-      if (i == PLAYER_ID) continue;
-      const Racer& c = racers[i];
-      float dz = wrapDelta(playerZ, c.z, trackLength);
-      if (dz < -CAR_LEN * 0.6f || dz > CAR_LEN * 4.0f || dz > nearest) continue;
-      if (fabsf(c.x - target) < CAR_HALF_W * 2.0f + 0.14f && (c.speed < speed || dz < CAR_LEN * 1.3f)) {
-        nearest = dz;
-        float left = c.x - 0.42f, right = c.x + 0.42f;
-        target = ((fabsf(left - playerX) < fabsf(right - playerX) && left > -0.80f) || right > 0.80f)
-                 ? left : right;
-      }
-    }
-    target = clampF(target, -0.80f, 0.80f);
-    float steer = (target - playerX) * STEER_AUTO * 1.6f * dt;
-    playerX += steer;
-    steerCmd = clampF(steer / (dt * STEER_MANUAL + 1e-4f), -1, 1);
-    float vMax = ai_cornerSpeed(playerZ) * maxSpeed;
-    if (racers[PLAYER_ID].finished) vMax = fminF(vMax, maxSpeed * 0.62f);   // cool-down
-    autoBrake = speed > vMax + 400.0f;
+    // The rival controller drives (same line, speeds and traffic logic). It
+    // asks for a lateral velocity; steer for it, compensating the drift that
+    // updatePhysics is about to add, within a human's steering authority.
+    AiCmd cmd;
+    ai_drivePlayer(dt, cmd);
+    const Segment& seg = segAt(findSegIdx(playerZ));
+    // (only the curve's drift: a bounce from a contact is left to act)
+    float vxNext = (velocityX - sKickVX + seg.curve * centrifugal * spPct * dt * CURVE_FORCE) *
+                   perFrame(LATERAL_FRICTION, dt);
+    float drift = -(vxNext * dt + dt * CENTRIFUGAL_DX * spPct * spPct * seg.curve * centrifugal);
+    float maxDx = STEER_MANUAL * authority * dt;
+    float dx = clampF(cmd.xVel * dt - drift, -maxDx, maxDx);
+    playerX += dx;
+    steerCmd = maxDx > 1e-6f ? dx / maxDx : 0.0f;
+    brakeIn = cmd.brake;
+    turboIn = cmd.turbo;
   } else {
-    // Steering authority grows with speed (no turning on the spot)
-    float authority = 0.25f + 0.75f * clampF(spPct * 1.5f, 0, 1);
     playerX += in.steer * STEER_MANUAL * authority * dt;
     steerCmd = in.steer;
+    brakeIn = in.brake;
+    turboIn = in.turbo;
   }
-  if (autopilot) playerX = clampF(playerX, -0.85f, 0.85f);
 
-  // Throttle is automatic; the brake cuts it.
-  braking = (in.brake && !autopilot) || autoBrake;
-  boosting = !autopilot && in.turbo && !braking && turboMeter > 0.01f;
-  if (boosting) turboMeter = fmaxF(0.0f, turboMeter - TURBO_DRAIN * dt);
-  else          turboMeter = fminF(1.0f, turboMeter + TURBO_REFILL * dt);
+  // Rocket start: a NEW turbo press within ROCKET_WINDOW of GO. The first
+  // frame of the race only records the input, so holding TURBO through the
+  // countdown does not count.
+  if (sFirstInput) { sTurboPrev = turboIn; sFirstInput = false; }
+  const bool turboPress = turboIn && !sTurboPrev;
+  sTurboPrev = turboIn;
+  if (turboPress && raceRunning && raceTime <= ROCKET_WINDOW && !rocketStarted && speed < maxSpeed * 0.1f) {
+    rocketStarted = true;
+    rocketTime = ROCKET_TIME;
+    if (acceleration < ROCKET_ACCEL) acceleration = ROCKET_ACCEL;
+  }
+  if (rocketTime > 0) rocketTime = fmaxF(0.0f, rocketTime - dt);
 
-  const float top = maxSpeed * (boosting ? 1.0f + TURBO_BOOST : 1.0f);
-  const float targetAccel = maxSpeed * ACCEL_TARGET * (boosting ? TURBO_ACCEL : 1.0f);
+  // Throttle is automatic; the brake overrides it.
+  braking = brakeIn;
+  boosting = ((turboIn && !braking && turboMeter > 0.01f) || rocketTime > 0) && !crashed;
+  if (boosting && rocketTime <= 0) turboMeter = fmaxF(0.0f, turboMeter - TURBO_DRAIN * dt);
+  else if (!boosting)              turboMeter = fminF(1.0f, turboMeter + TURBO_REFILL * dt);
+
+  // Slipstream behind a car in the same lane (racers[] mirror of last frame)
+  draft += (physics_draftOf(PLAYER_ID) - draft) * clampF(dt * 2.0f, 0, 1);
+
+  const float tmul = boosting ? TURBO_ACCEL : 1.0f;
+  const float top = maxSpeed * (boosting ? 1.0f + TURBO_BOOST : 1.0f) * (1.0f + DRAFT_BOOST * draft);
+  const float targetAccel = maxSpeed * ACCEL_TARGET * tmul;
   if (braking) {
-    acceleration = 0;
+    // the engine's push fades while braking (a short tap costs little)
+    acceleration *= perFrame(BRAKE_ACCEL_KEEP, dt);
     speed -= BRAKE_DECEL * dt;
     if (speed < 0) speed = 0;
   } else if (speed < top * ACCEL_NEAR_MAX) {
-    acceleration += ACCEL_RAMP * (boosting ? TURBO_ACCEL : 1.0f) * dt;
+    acceleration += ACCEL_RAMP * tmul * dt;
     if (acceleration > targetAccel) acceleration = targetAccel;
   } else {
-    acceleration *= perFrame(ACCEL_DAMPING, dt);
+    // above the cruise point (turbo just ended, slipstream, downhill): ease
+    // off, but only down to the throttle that holds the normal cruise speed
+    // against friction. Decaying to zero made the car sag far below the
+    // cruise afterwards and re-ramp for seconds at ACCEL_RAMP.
+    acceleration = fmaxF(acceleration * perFrame(ACCEL_DAMPING, dt), fminF(acceleration, physics_cruiseAccel(maxSpeed)));
   }
 
   // Visual steering (car yaw) eases towards the command
@@ -148,6 +206,16 @@ static float materialDrag(int mat, float ax) {
   }
 }
 
+// Off-road drag for any car at |x| = ax on material mat (speed factor this frame)
+static float offRoadFactor(const Segment& seg, float x, float spd, float dt) {
+  float ax = fabsf(x);
+  if (ax <= ROAD_EDGE_X + 0.05f) return 1.0f;
+  int mat = seg.isTunnel() ? MAT_SIDEWALK : seg.mat(x < 0 ? 0 : 1);
+  if (spd > maxSpeed * 0.30f || mat == MAT_WATER || (mat == MAT_SAND && ax > BEACH_WATER_X))
+    return perFrame(materialDrag(mat, ax), dt);
+  return 1.0f;
+}
+
 void updatePhysics(float dt) {
   if (segCount <= 0) return;
   const float playerZ = position + playerZdist;
@@ -164,19 +232,15 @@ void updatePhysics(float dt) {
   speed -= slope * GRAVITY_FACTOR * dt;
 
   // === OFF ROAD: drag per ground material ===
-  float ax = fabsf(playerX);
-  int mat = seg.isTunnel() ? MAT_SIDEWALK : seg.mat(playerX < 0 ? 0 : 1);
-  if (ax > ROAD_EDGE_X + 0.05f) {
-    float drag = materialDrag(mat, ax);
-    if (speed > maxSpeed * 0.30f || mat == MAT_WATER || (mat == MAT_SAND && ax > BEACH_WATER_X))
-      speed *= perFrame(drag, dt);
-    offRoad = (mat == MAT_SIDEWALK) ? 0.0f : clampF((ax - 1.05f) * 4.0f, 0, 1);
-  } else {
-    offRoad = 0;
+  speed *= offRoadFactor(seg, playerX, speed, dt);
+  {
+    float ax = fabsf(playerX);
+    int mat = seg.isTunnel() ? MAT_SIDEWALK : seg.mat(playerX < 0 ? 0 : 1);
+    offRoad = (ax <= ROAD_EDGE_X + 0.05f || mat == MAT_SIDEWALK) ? 0.0f : clampF((ax - 1.05f) * 4.0f, 0, 1);
   }
 
-  // Turbo raises the cap; above it the car eases back down
-  const float top = maxSpeed * (boosting ? 1.0f + TURBO_BOOST : 1.0f);
+  // Turbo and the slipstream raise the cap; above it the car eases back down
+  const float top = maxSpeed * (boosting ? 1.0f + TURBO_BOOST : 1.0f) * (1.0f + DRAFT_BOOST * draft);
   if (speed > top) speed -= (speed - top) * clampF(dt * 2.0f, 0, 1);
   if (speed < 0) speed = 0;
 
@@ -197,17 +261,20 @@ void updatePhysics(float dt) {
     driftAngle *= perFrame(0.9f, dt);
   }
 
+  bumpShake *= perFrame(0.88f, dt);
+  sKickVX *= perFrame(LATERAL_FRICTION, dt);
   position = loopIncrease(position, dt * speed, trackLength);
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  COLLISIONS
+//  SOLID LIMITS
 // ═══════════════════════════════════════════════════════════════
 static void crash() {
   if (crashed) return;
   crashed = true;
   crashTime = 0;
   boosting = false;
+  rocketTime = 0;
 }
 
 // Max |x| of the solid limit on one side of a segment (0 left, 1 right)
@@ -218,66 +285,70 @@ static float solidLimit(const Segment& s, int side) {
   return OFFROAD_MAX_X;
 }
 
+float physics_maxX(float z, int side) {
+  if (segCount <= 0) return OFFROAD_MAX_X - CAR_HALF_W;
+  // every segment under the footprint, rear bumper to front bumper
+  const int s0 = findSegIdx(z - CAR_LEN * 0.5f);
+  const int count = (int)(CAR_LEN / SEG_LEN) + 2;
+  float lim = OFFROAD_MAX_X;
+  for (int k = 0; k < count; k++) lim = fminF(lim, solidLimit(segAt(s0 + k), side));
+  return lim - CAR_HALF_W;
+}
+
+// Keep the player inside the solid limits. A limit that appears well inside
+// the car at speed is a frontal hit (a wall end, a portal): crash.
+static void playerWalls(float dt, bool allowCrash) {
+  const float pz = position + playerZdist;
+  for (int side = 0; side < 2; side++) {
+    float maxX = physics_maxX(pz, side);
+    float xs = side ? playerX : -playerX;            // outward offset on this side
+    if (xs <= maxX) continue;
+    float over = xs - maxX;
+    if (allowCrash && over > 0.15f && speed > maxSpeed * 0.30f) crash();
+    else speed *= perFrame(0.975f, dt);              // scrape along it
+    playerX = side ? maxX : -maxX;
+    velocityX = 0;
+  }
+}
+
+// Same limits for a rival (pushed there by a bump): it scrapes, never crashes
+static void rivalWalls(int i, float dt) {
+  Racer& R = racers[i];
+  for (int side = 0; side < 2; side++) {
+    float maxX = physics_maxX(R.z, side);
+    float xs = side ? R.x : -R.x;
+    if (xs <= maxX) continue;
+    R.x = side ? maxX : -maxX;
+    R.speed *= perFrame(0.975f, dt);
+    float v = ai_latVel(i);
+    if ((side && v > 0) || (!side && v < 0)) ai_kickLatVel(i, -v);   // stop moving into it
+  }
+  if (fabsf(R.x) > ROAD_EDGE_X + 0.05f)
+    R.speed *= offRoadFactor(segAt(findSegIdx(R.z)), R.x, R.speed, dt);
+}
+
 void checkCollisions(float dt) {
   if (segCount <= 0 || crashed) return;
   const float playerZ = position + playerZdist;
   const int pSeg = findSegIdx(playerZ);
-  // footprint: the car spans +-CAR_LEN/2 around its centre (~ +-2.75 segments)
-  const int K0 = -(int)(CAR_LEN * 0.5f / SEG_LEN), K1 = (int)(CAR_LEN * 0.5f / SEG_LEN) + 1;
 
-  // --- 1. Rivals: bumps, not crashes (unless the hit is very hard) ---
-  for (int i = 0; i < NUM_RACERS; i++) {
-    if (i == PLAYER_ID) continue;
-    Racer& R = racers[i];
-    float dz = wrapDelta(playerZ, R.z, trackLength);   // + : rival ahead
-    float dx = R.x - playerX;
-    if (fabsf(dz) >= CAR_LEN || fabsf(dx) >= CAR_HALF_W * 2.0f) continue;
-    float ox = CAR_HALF_W * 2.0f - fabsf(dx);
-    float oz = CAR_LEN - fabsf(dz);
-    if (oz / CAR_LEN < ox / (CAR_HALF_W * 2.0f)) {
-      // nose to tail
-      float closing = dz > 0 ? speed - R.speed : R.speed - speed;
-      if (closing > maxSpeed * 0.55f) crash();
-      if (dz > 0) {          // the player rear-ends the rival
-        float push = fmaxF(closing, 0.0f) * 0.25f;
-        speed = fminF(speed, R.speed * 0.92f);
-        R.speed = fminF(R.speed + push, maxSpeed * 1.05f);
-        position = loopIncrease(position, -oz, trackLength);
-      } else {               // the rival rear-ends the player
-        float push = fmaxF(closing, 0.0f) * 0.25f;
-        R.speed = fminF(R.speed, speed * 0.92f);
-        speed = fminF(speed + push, maxSpeed * (1.0f + TURBO_BOOST));
-        R.z = loopIncrease(R.z, -oz, trackLength);
-      }
-    } else {
-      // side by side: push both apart, small speed loss
-      float s = dx >= 0 ? -1.0f : 1.0f;     // direction the player moves
-      playerX += s * ox * 0.55f;
-      R.x -= s * ox * 0.45f;
-      velocityX = 0;
-      speed *= perFrame(0.985f, dt);
-      R.speed *= perFrame(0.985f, dt);
-    }
-  }
+  // --- 1. Solid limits: rails, tunnel walls, building / cliff faces ---
+  playerWalls(dt, true);
 
-  // --- 2. Solid limits: rails, tunnel walls, building / cliff faces ---
-  for (int side = 0; side < 2; side++) {
-    float lim = OFFROAD_MAX_X;
-    for (int k = K0; k <= K1; k++) lim = fminF(lim, solidLimit(segAt(pSeg + k), side));
-    float maxX = lim - CAR_HALF_W;
-    float xs = side ? playerX : -playerX;          // outward offset on this side
-    if (xs <= maxX) continue;
-    float over = xs - maxX;
-    if (over > 0.15f && speed > maxSpeed * 0.30f) {
-      crash();                                      // drove into a wall end / portal
-    } else {
-      speed *= perFrame(0.975f, dt);               // scrape along it
-    }
-    playerX = side ? maxX : -maxX;
-    velocityX = 0;
+  // --- 2. Water: never reachable on the designed circuits (rails), but a car
+  //        that ends up fully in the sea is reset like a crash ---
+  {
+    const Segment& s = segments[pSeg];
+    const int side = playerX < 0 ? 0 : 1;
+    const int mat = s.isTunnel() ? MAT_GRASS : s.mat(side);
+    const float ax = fabsf(playerX);
+    if ((mat == MAT_WATER && ax > SEAWALL_X + CAR_HALF_W) ||
+        (mat == MAT_SAND && ax > BEACH_WATER_X + CAR_HALF_W))
+      crash();
   }
 
   // --- 3. Solid scenery (trunks, rocks, posts) ---
+  const int K0 = -(int)(CAR_LEN * 0.5f / SEG_LEN), K1 = (int)(CAR_LEN * 0.5f / SEG_LEN) + 1;
   for (int k = K0; k <= K1 && !crashed; k++) {
     const int si = pSeg + k;
     const Segment& s = segAt(si);
@@ -305,6 +376,101 @@ void checkCollisions(float dt) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  CAR-TO-CAR CONTACTS (player and rivals, same rules for every pair)
+// ═══════════════════════════════════════════════════════════════
+struct Body { float z, x, speed, xVel; };
+
+static void getBody(int i, Body& b) {
+  if (i == PLAYER_ID) {
+    b.z = loopIncrease(position + playerZdist, 0, trackLength);
+    b.x = playerX;
+    b.speed = speed;
+    b.xVel = -velocityX;                 // updatePhysics: playerX -= velocityX * dt
+  } else {
+    const Racer& R = racers[i];
+    b.z = R.z;
+    b.x = R.x;
+    b.speed = R.speed;
+    b.xVel = ai_latVel(i);
+  }
+}
+
+static void putBody(int i, const Body& b, const Body& old) {
+  if (i == PLAYER_ID) {
+    position = loopIncrease(position, wrapDelta(old.z, b.z, trackLength), trackLength);
+    playerX = b.x;
+    speed = b.speed;
+    sKickVX += -b.xVel - velocityX;
+    velocityX = -b.xVel;
+    Racer& P = racers[PLAYER_ID];
+    P.z = loopIncrease(b.z, 0, trackLength);
+    P.x = b.x;
+    P.speed = b.speed;
+  } else {
+    Racer& R = racers[i];
+    R.z = loopIncrease(b.z, 0, trackLength);
+    R.x = b.x;
+    R.speed = b.speed;
+    ai_kickLatVel(i, b.xVel - old.xVel);
+  }
+}
+
+static void pairContact(int ia, int ib, float dt) {
+  Body A, B;
+  getBody(ia, A);
+  getBody(ib, B);
+  const float dz = wrapDelta(A.z, B.z, trackLength);   // + : B ahead of A
+  const float dx = B.x - A.x;                           // + : B right of A
+  const float W2 = 2.0f * CAR_HALF_W;
+  if (fabsf(dz) >= CAR_LEN || fabsf(dx) >= W2) return;
+  const Body A0 = A, B0 = B;
+  const float ox = W2 - fabsf(dx);                      // lateral overlap (half-widths)
+  const float oz = CAR_LEN - fabsf(dz);                 // longitudinal overlap (world units)
+
+  if (oz < ox * ROAD_W) {
+    // ---- nose to tail: separate along the track ----
+    Body& rear  = dz > 0 ? A : B;
+    Body& front = dz > 0 ? B : A;
+    const int rearId = dz > 0 ? ia : ib;
+    const float closing = rear.speed - front.speed;
+    if (closing > 0) {
+      if (rearId == PLAYER_ID && closing > maxSpeed * BUMP_CRASH) crash();   // very hard hit
+      // equal masses with restitution: the rear car loses speed, the front
+      // car gets a smaller push (part of the energy goes into the bump)
+      const float J = closing * (1.0f + BUMP_REST) * 0.5f;
+      rear.speed = fmaxF(0.0f, rear.speed - J) * 0.99f;
+      front.speed += J * 0.75f;
+    }
+    rear.z  -= oz * 0.6f + 1.0f;
+    front.z += oz * 0.4f;
+  } else {
+    // ---- side by side: push apart, bounce, small speed loss ----
+    float s = dx > 0 ? 1.0f : (dx < 0 ? -1.0f : (ia < ib ? 1.0f : -1.0f));
+    const float push = ox * 0.5f + 0.003f;
+    A.x -= s * push;
+    B.x += s * push;
+    if (A.xVel * s > -SIDE_KICK) A.xVel = -s * SIDE_KICK;
+    if (B.xVel * s <  SIDE_KICK) B.xVel =  s * SIDE_KICK;
+    A.speed *= perFrame(SIDE_RUB_KEEP, dt);
+    B.speed *= perFrame(SIDE_RUB_KEEP, dt);
+  }
+  putBody(ia, A, A0);
+  putBody(ib, B, B0);
+  if (ia == PLAYER_ID || ib == PLAYER_ID) bumpShake = 1.0f;
+}
+
+void physics_resolveContacts(float dt) {
+  if (segCount <= 0) return;
+  for (int pass = 0; pass < 2; pass++) {
+    for (int a = 0; a < NUM_RACERS; a++)
+      for (int b = a + 1; b < NUM_RACERS; b++) pairContact(a, b, pass == 0 ? dt : 0.0f);
+    // a push may have shoved somebody into a wall: same limits for all
+    for (int i = 1; i < NUM_RACERS; i++) rivalWalls(i, dt);
+    if (!crashed) playerWalls(dt, false);
+  }
+}
+
 void updateCrash(float dt) {
   if (!crashed) return;
   crashTime += dt;
@@ -319,4 +485,5 @@ void updateCrash(float dt) {
     steerVisual = 0;
     playerX = clampF(playerX * 0.3f, -0.6f, 0.6f);   // back onto the road
   }
+  position = loopIncrease(position, dt * speed, trackLength);
 }

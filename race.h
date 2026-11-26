@@ -66,4 +66,14 @@ void  race_results(ResultRow out[NUM_RACERS]);
 float race_gridProgress(int slot);
 float race_gridX(int slot);
 
+// ═══════════════════════════════════════════════════════════════
+//  ADDITIONS (feature phase)
+// ═══════════════════════════════════════════════════════════════
+// Copy the player's physics state (position + playerZdist, playerX, speed,
+// yaw, brake, turbo) into racers[PLAYER_ID]. race_update() does it; the
+// rival AI calls it first so it sees the player of THIS frame.
+void  race_syncPlayer();
+// Seconds since racer i started its current lap (0 before the start)
+float race_lapTime(int i);
+
 #endif // RACE_H
