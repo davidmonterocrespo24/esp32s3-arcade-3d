@@ -208,10 +208,10 @@ static const Sec MOUNTAIN_SECS[] = {
   STF( 70, 52, MZ_WALL_R, SF_STRETCH_B),           // 19 the descent
   STF( 56, 40, MZ_TUNNEL, SF_TUNNEL),              // 20 tunnel 2
   CO(  60, 80, 12, 30, MZ_FOREST),                 // 21 -> west-south-west
-  STF( 90, 22, MZ_FOREST, SF_STRETCH_A),           // 22 down through the forest
+  STF( 90, 14, MZ_FOREST, SF_STRETCH_A),           // 22 down through the forest into a dip
   CO( -15, 40, 8, Y_FREE, MZ_FOREST),              // 23 a kink
-  CO(  15, 40, 8, 12, MZ_FOREST),                  // 24
-  ST(  60, 8, MZ_VALLEY),                          // 25
+  CO(  15, 40, 8, 19, MZ_FOREST),                  // 24 over a crest (the road drops out of sight)
+  ST(  60, 6, MZ_VALLEY),                          // 25 plunging into the valley
   CO( -20, 46, 8, Y_FREE, MZ_VALLEY),              // 26
   CO( 140, 110, 14, 0, MZ_VALLEY),                 // 27 -> north
   ST(  80, 0, MZ_VALLEY),                          // 28 pre-grid straight
