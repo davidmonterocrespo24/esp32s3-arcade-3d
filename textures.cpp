@@ -35,7 +35,7 @@ static const WallDef WALL_DEFS[WT_COUNT] = {
   { 5, 16, 16, 16, 3 },   // SHOPS
   { 4, 16, 16, 16, 4 },   // VILLA
   { 5, 16, 32, 0, 4 },    // CLIFF
-  { 4, 16, 16, 16, 4 },   // WALL
+  { 5, 16, 16, 16, 4 },   // WALL
   { 4, 16, 32, 16, 4 },   // TUNNEL
   { 4, 0, 16, 0, 2 },     // ROOF
 };
@@ -449,29 +449,32 @@ static uint8_t cliffEval(float u, float v, float px, int W) {
 }
 
 static uint8_t wallEval(float u, float v, float px) {
-  const float mx = fmodf(u, 16.0f);
-  float n = speck(u, v, px, 0x3A11u);
-  float m = fbm(u, v, 8, 2, 16, 48, px, 0x3A12u);
-  if (v < 16 && v < 3) return TS_TRIM;            // coping
-  if (v >= 3 && v < 4) return TS_DARK;            // drip shadow
+  // Concrete retaining wall: two cast panels per 32 texels (different
+  // tones), deep joints, form-tie holes, rust / water stains, a coping
+  // with its drip shadow on top and a dirty footing with weep holes.
+  const float mx = fmodf(u, 32.0f), pxm = fmodf(u, 16.0f);
+  const int panel = mx < 16.0f ? 0 : 1;
+  const float n = speck(u, v, px, 0x3A11u);
+  const float m = fbm(u, v, 8, 2, 32, 48, px, 0x3A12u);
+  if (v < 3) return (px <= 1 && fmodf(u, 8.0f) < 1.0f) ? TS_TRIMD : TS_TRIM;   // coping blocks
+  if (v < 4) return TS_DARK;                      // drip shadow under the coping
   const bool base = v >= 32;
   const float my = fmodf(v, 16.0f);
-  if (px <= 1 && mx < 1) return TS_DARK;          // vertical panel joint
-  if (px <= 1 && my >= 15) return TS_DARK;        // horizontal joint
-  if (base && my >= 12) {
-    if (n < 0.08f) return TS_ACC2;                // moss
-    return TS_ALT;                                // dirty footing
-  }
-  if (base && my >= 9 && my < 10 && mx >= 7 && mx < 9) return TS_DARK;   // weep hole
-  if (px <= 1 && ((mx >= 3 && mx < 4) || (mx >= 11 && mx < 12)) &&
-      ((my >= 3 && my < 4) || (my >= 11 && my < 12)))
+  if (px <= 2 && pxm < 1.0f) return TS_DARK;      // vertical joint
+  if (px <= 1 && pxm < 2.0f) return TS_SHADE;     // joint edge in shadow
+  if (px <= 2 && my >= 15.0f) return TS_DARK;     // horizontal joint
+  if (base && my >= 12.0f) return n < 0.10f ? TS_ACC2 : TS_ALT;     // dirty footing, moss
+  if (base && my >= 9.0f && my < 10.0f && pxm >= 7.0f && pxm < 9.0f) return TS_DARK;   // weep hole
+  if (px <= 1 && ((pxm >= 4 && pxm < 5) || (pxm >= 12 && pxm < 13)) &&
+      ((my >= 4 && my < 5) || (my >= 11 && my < 12)))
     return TS_SHADE;                              // form-tie holes
-  // water stains running down from the joints
-  uint32_t sh = hash32((uint32_t)((int)mx) * 0x45u + 0x3Au);
-  if ((sh & 7) == 0 && my < 4.0f + (float)((sh >> 4) & 7)) return TS_ALT2;
-  if (m < 0.32f) return TS_SHADE;
-  if (n > 0.93f || m > 0.75f) return TS_LIGHT;
-  return TS_BASE;
+  // stains running down: under the coping on one panel, from a tie on the other
+  if (panel == 1 && pxm >= 5.0f && pxm < 8.0f && my < 5.0f + m * 9.0f) return TS_ALT2;
+  if (panel == 0 && pxm >= 12.0f && pxm < 13.5f && my >= 11.0f) return TS_ALT2;
+  if (n > 0.94f) return TS_LIGHT;
+  if (m < 0.30f) return TS_SHADE;
+  if (panel == 1) return m < 0.55f ? TS_SHADE : TS_BASE;
+  return m > 0.72f ? TS_LIGHT : TS_BASE;
 }
 
 static uint8_t tunnelEval(float u, float v, float px) {
@@ -965,8 +968,8 @@ static const TexColors COLORS[WT_COUNT][TEX_VARIANTS] = {
         C3(90,110,130), C3(150,170,190), C3(60,72,88), C3(60,64,70), C3(90,90,100) },
       { C3(255,214,140), C3(255,240,200) } } },
   { // WALL: grey, beige, dark, light
-    { { C3(56,56,56), C3(120,118,112), C3(146,144,138), C3(168,166,160), C3(108,108,100), C3(110,110,104),
-        C3(190,188,182), C3(90,88,84), C3(80,90,60), C3(70,96,56), C3(80,80,80),
+    { { C3(44,44,44), C3(104,102,98), C3(128,126,120), C3(150,148,142), C3(96,94,86), C3(92,88,80),
+        C3(176,174,168), C3(84,82,78), C3(80,90,60), C3(70,96,56), C3(80,80,80),
         C3(90,110,130), C3(150,170,190), C3(60,72,88), C3(60,64,70), C3(90,90,100) },
       { C3(255,214,140), C3(255,240,200) } },
     { { C3(66,60,50), C3(142,134,116), C3(172,162,140), C3(192,184,164), C3(128,120,102), C3(132,122,104),

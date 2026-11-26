@@ -102,6 +102,7 @@ static inline float jagNoise(float u) {
 }
 
 #define MAX_FLOORS 64
+#define WALL_BLOCK 8          // columns per exact perspective evaluation
 
 void drawWallColumns(const WallJob& J) {
   const float x0 = fminF(J.xa, J.xb), x1 = fmaxF(J.xa, J.xb);
@@ -117,79 +118,113 @@ void drawWallColumns(const WallJob& J) {
   memcpy(pal, J.pal, sizeof(pal));
   memcpy(palB, J.palBase, sizeof(palB));
   const float dIz = J.izb - J.iza, dUz = J.uzb - J.uza;
-  const float dGy = J.gyb - J.gya, dTy = J.tyb - J.tya;
   const float invVTot = 1.0f / J.vTot;
-  // window colours per body floor, recomputed when the column's cell changes
+  const float invP = 1.0f / (float)T.body;
+  static const float SC[TEX_LEVELS] = { 65536.0f, 32768.0f, 16384.0f, 8192.0f };
+  // window colours per body floor: computed for the floors a column shows,
+  // kept while the window cell stays the same (adjacent columns)
   const int nBody = J.windows ? iclamp(J.floors - 1, 0, MAX_FLOORS) : 0;
   const uint16_t* win[MAX_FLOORS];
-  int winCell = -0x7FFFFFFF;
+  int winCell = -0x7FFFFFFF, winLo = 0, winHi = 0;
+  bool baseDone = false;
+  for (int k = 0; k < nBody; k++) win[k] = J.day[0];   // never an invalid pointer
 
-  for (int x = c0; x < c1; x++) {
-    float t = (x + 0.5f - J.xa) * invDx;
-    t = t < 0 ? 0 : (t > 1 ? 1 : t);
-    const float iz = J.iza + dIz * t;
-    if (iz <= 0) continue;
-    const float z = 1.0f / iz;
-    const float u = (J.uza + dUz * t) * z;
-    const float gy = J.gya + dGy * t;
-    float ty = J.tya + dTy * t;
+  // ground / top lines step linearly per column; u and texels-per-pixel are
+  // evaluated exactly every WALL_BLOCK columns and interpolated in between
+  const float dGy = (J.gyb - J.gya) * invDx, dTy = (J.tyb - J.tya) * invDx;
+  float gy = J.gya + (c0 + 0.5f - J.xa) * dGy, ty0 = J.tya + (c0 + 0.5f - J.xa) * dTy;
+  float u = 0, du = 0, tpp = 0, dtpp = 0;
+  int blk = 0, shift = T.winShift;
+  float dudx = 0;
+
+  for (int x = c0; x < c1; x++, gy += dGy, ty0 += dTy) {
+    if (blk == 0) {
+      const int n = imin(WALL_BLOCK, c1 - x);
+      const float ta = clampF((x + 0.5f - J.xa) * invDx, 0.0f, 1.0f);
+      const float tb = clampF((x + n + 0.5f - J.xa) * invDx, 0.0f, 1.0f);
+      const float iza = J.iza + dIz * ta, izb = J.iza + dIz * tb;
+      if (iza <= 0 || izb <= 0) { blk = 0; continue; }
+      const float ua = (J.uza + dUz * ta) / iza, ub = (J.uza + dUz * tb) / izb;
+      const float invN = 1.0f / (float)n;
+      u = ua;
+      du = (ub - ua) * invN;
+      // texels per pixel vertically at both block ends (h is linear in x)
+      const float ha = fmaxF(0.25f, gy - ty0), hb = fmaxF(0.25f, (gy + dGy * n) - (ty0 + dTy * n));
+      tpp = J.vTot / ha;
+      dtpp = (J.vTot / hb - tpp) * invN;
+      dudx = fabsf(du);
+      // window cell: coarser cells when a column covers several (stable at
+      // grazing angles instead of flickering)
+      shift = T.winShift;
+      while (shift < 12 && dudx * 2.0f > (float)(1 << shift)) shift++;
+      blk = n;
+    }
+    const float uc = u, tppc = tpp;
+    u += du; tpp += dtpp; blk--;
+
+    float ty = ty0;
     const float h = gy - ty;
     if (h < 0.5f) continue;
-    const float ppt = h * invVTot;          // pixels per texel, vertically
-    const float tpp = 1.0f / ppt;
+    float ppt = h * invVTot;                 // pixels per texel, vertically
     float vTot = J.vTot;
-    if (J.jag > 0) {                        // lower the top edge by a noise profile
-      float off = jagNoise(u) * J.jag;
+    if (J.jag > 0) {                         // lower the top edge by a noise profile
+      float off = jagNoise(uc) * J.jag;
       if (off >= vTot - 1) continue;
       ty += off * ppt;
       vTot -= off;
     }
     const int ya = imax(rowAt(ty), gfx_cy0), yb = imin(rowAt(gy), gfx_cy1);
     if (yb <= ya) continue;
-    if (tpp > 12.8f) {                      // farther than ~1.3 px per floor: flat LOD
+    if (tppc > 12.8f) {                      // farther than ~1.3 px per floor: flat LOD
       gfx_vspan(x, ya, yb, J.farCol);
       continue;
     }
-    int l = 0;
-    while (l < TEX_LEVELS - 1 && tpp > 1.6f * (float)(1 << l)) l++;
-    // horizontal texel density (d(u)/dx with u = (u/z) / (1/z))
-    const float dudx = fabsf((dUz - u * dIz) * z * invDx);
+    int l = tppc > 1.6f ? (tppc > 3.2f ? (tppc > 6.4f ? 3 : 2) : 1) : 0;
     const bool grazing = dudx > 3.0f * (float)(1 << l);
     const int R = T.rows >> l;
-    const int ui = (int)u;
+    const int ui = (int)uc;
     const uint8_t* colp = grazing ? T.avg[l] : T.lev[l] + (((ui >> l) & ((W0 >> l) - 1)) * R);
     const float e1 = fminF(J.capV, vTot), e2 = fmaxF(e1, vTot - J.baseV);
-    const float sc = 65536.0f / (float)(1 << l);
-    const int32_t dv = (int32_t)(tpp * sc);
+    const float sc = SC[l];
+    const int32_t dv = (int32_t)(tppc * sc);
 
-    // window cell of this column: coarser cells when the column covers
-    // several (stable at grazing angles instead of flickering)
-    int shift = T.winShift;
-    while (shift < 12 && dudx > (float)(1 << shift)) shift++;
     const int cell = ui >> shift;
-    if (J.windows && cell != winCell) {
-      winCell = cell;
-      for (int k = 0; k < nBody; k++) {
-        const int fl = J.floors - 1 - k;     // floor number from the ground
-        const int ds = J.dayState == -2 ? iclamp(fl * TEX_WIN_STATES / imax(1, J.floors), 0, 7) : -1;
-        win[k] = tex_pickWindow(J.day, J.lit, J.seed, cell, fl, J.litPct, J.night100, ds);
-      }
-      const uint16_t* w0 = tex_pickWindow(J.day, J.lit, J.seed, cell, 0, J.litPct, J.night100,
-                                          J.dayState == -2 ? 0 : -1);
-      palB[TS_WINA] = w0[0]; palB[TS_WINB] = w0[1]; palB[TS_WINC] = w0[2];
-    }
+    if (J.windows && cell != winCell) { winCell = cell; winLo = winHi = 0; baseDone = false; }
 
     // band rows: texel w (from the top edge) is at screen y = ty + w * ppt
     const int yE1 = imin(yb, rowAt(ty + e1 * ppt)), yE2 = imin(yb, rowAt(ty + e2 * ppt));
+    const int yB0 = imax(ya, yE1);
+    if (nBody > 0 && yE2 > yB0) {
+      // body floors this column shows: [k0, k1), with one floor of margin
+      // on both ends (the fixed-point walk may round across a boundary)
+      const int k0 = iclamp((int)(((yB0 + 0.5f - ty) * tppc - e1) * invP) - 1, 0, nBody - 1);
+      const int k1 = iclamp((int)(((yE2 - 0.5f - ty) * tppc - e1) * invP) + 2, k0 + 1, nBody);
+      if (k0 < winLo || k1 > winHi || winLo == winHi) {
+        const bool had = winLo != winHi;
+        const int lo = had ? imin(k0, winLo) : k0, hi = had ? imax(k1, winHi) : k1;
+        for (int k = lo; k < hi; k++) {
+          if (had && k >= winLo && k < winHi) continue;
+          const int fl = J.floors - 1 - k;     // floor number from the ground
+          const int ds = J.dayState == -2 ? iclamp(fl * TEX_WIN_STATES / imax(1, J.floors), 0, 7) : -1;
+          win[k] = tex_pickWindow(J.day, J.lit, J.seed, cell, fl, J.litPct, J.night100, ds);
+        }
+        winLo = lo; winHi = hi;
+      }
+    }
+    if (J.windows && !baseDone && T.base && yb > imax(ya, yE2)) {
+      const uint16_t* w0 = tex_pickWindow(J.day, J.lit, J.seed, cell, 0, J.litPct, J.night100,
+                                          J.dayState == -2 ? 0 : -1);
+      palB[TS_WINA] = w0[0]; palB[TS_WINB] = w0[1]; palB[TS_WINC] = w0[2];
+      baseDone = true;
+    }
     // CAP
     if (T.cap && yE1 > ya)
-      gfx_texColumn(x, ya, yE1, colp, (uint32_t)(fmaxF(0.0f, (ya + 0.5f - ty) * tpp) * sc), dv,
+      gfx_texColumn(x, ya, yE1, colp, (uint32_t)(fmaxF(0.0f, (ya + 0.5f - ty) * tppc) * sc), dv,
                     (uint32_t)((T.cap >> l) - 1), pal);
     // BODY (one call; window colours switch per floor inside the loop)
-    const int yB0 = imax(ya, yE1);
     if (yE2 > yB0) {
       const uint8_t* bodyM = colp + (T.cap >> l);
-      const uint32_t v0 = (uint32_t)(fmaxF(0.0f, (yB0 + 0.5f - ty) * tpp - e1) * sc);
+      const uint32_t v0 = (uint32_t)(fmaxF(0.0f, (yB0 + 0.5f - ty) * tppc - e1) * sc);
       const uint32_t mask = (uint32_t)((T.body >> l) - 1);
       if (nBody > 0) gfx_texColumnWin(x, yB0, yE2, bodyM, v0, dv, mask, bodyLog2 - l, pal, TS_WINA, win, nBody);
       else gfx_texColumn(x, yB0, yE2, bodyM, v0, dv, mask, pal);
@@ -198,7 +233,7 @@ void drawWallColumns(const WallJob& J) {
     const int yS0 = imax(ya, yE2);
     if (T.base && yb > yS0) {
       const uint8_t* baseM = colp + ((T.cap + T.body) >> l);
-      const uint32_t v0 = (uint32_t)(fmaxF(0.0f, (yS0 + 0.5f - ty) * tpp - e2) * sc);
+      const uint32_t v0 = (uint32_t)(fmaxF(0.0f, (yS0 + 0.5f - ty) * tppc - e2) * sc);
       gfx_texColumn(x, yS0, yb, baseM, v0, dv, (uint32_t)((T.base >> l) - 1), palB);
     }
   }
@@ -206,69 +241,77 @@ void drawWallColumns(const WallJob& J) {
 
 // ═══════════════════════════════════════════════════════════════
 //  PALETTES
-//  Level 1, per frame: the unfogged palettes of a (style, face), built
-//  on first use (a small direct-mapped cache).
+//  Level 1, per frame: the unfogged palettes of a look (texture, colour
+//  variant, face), built on first use (16 entries, 2-way).
 //  Level 2, per slice: fogged copies, kept per side and face, so
 //  consecutive slices of a building with the same fog reuse them.
 // ═══════════════════════════════════════════════════════════════
-struct PalSet {
+struct PalSet {                            // fogged, ready to draw
   uint32_t key;
   uint16_t pal[TS_COUNT], base[TS_COUNT];
   uint16_t day[TEX_WIN_STATES][3];
   uint16_t lit[4][3];
   uint16_t farCol;
 };
-#define BASE_CACHE 16
-static PalSet sBaseCache[BASE_CACHE];     // unfogged, per frame
-static PalSet sFogCache[4];               // [side L, side R, front L, front R]
+struct BasePal {                           // unfogged, per look
+  uint32_t key;
+  uint16_t pal[TS_COUNT], base[TS_COUNT];
+  uint16_t day[TEX_WIN_STATES][3];
+};
+#define BASE_CACHE 8
+static BasePal  sBaseCache[BASE_CACHE];   // 2-way: sets of 2 entries
+static PalSet   sFogCache[4];             // [side L, side R, front L, front R]
+static uint16_t sLit[4][3];               // night window lights (unfogged), per frame
 static uint32_t sFrame = 1;
 
 void buildings_beginFrame() {
   sFrame++;
   if ((sFrame & 0xFFFFu) == 0) sFrame++;
+  tex_litSets(sLit, 0, 0);
 }
 
 static inline void fogRun(uint16_t* dst, const uint16_t* src, int n, uint32_t a) {
+  if (a == 0) { memcpy(dst, src, (size_t)n * sizeof(uint16_t)); return; }
   for (int i = 0; i < n; i++) dst[i] = blend565(pal.fog, src[i], a);
-}
-
-static void fogSet(PalSet& out, const PalSet& in, int fog32) {
-  if (fog32 <= 0) { memcpy(&out, &in, sizeof(PalSet)); return; }
-  const uint32_t a = (uint32_t)fog32;
-  fogRun(out.pal, in.pal, TS_COUNT, a);
-  fogRun(out.base, in.base, TS_COUNT, a);
-  fogRun(&out.day[0][0], &in.day[0][0], TEX_WIN_STATES * 3, a);
-  fogRun(&out.lit[0][0], &in.lit[0][0], 4 * 3, a);
-  out.farCol = blend565(pal.fog, in.farCol, a);
 }
 
 static const PalSet& palettes(int slot, const Look& L, uint8_t style, int face, int fog32) {
   const uint32_t frame = sFrame & 0xFFFFu;
-  const uint32_t bkey = ((uint32_t)style | ((uint32_t)face << 8) | (frame << 16));
-  PalSet& B = sBaseCache[(style * 7u + (uint32_t)face * 3u) & (BASE_CACHE - 1)];
-  if (B.key != bkey) {
-    B.key = bkey;
-    const TexColors& C = tex_colors(L.tex, L.colors);
-    tex_buildPalette(B.pal, C, face, 0, 0);
-    const float up = pal.night * 0.55f;
-    if (up > 0.02f) tex_buildUplitPalette(B.base, C, face, 0, 0, up);
-    else memcpy(B.base, B.pal, sizeof(B.base));
-    if (L.windows) {
-      tex_windowSets(B.day, face, C.rgb[TS_WINA], L.curtain, 0, 0);
-      tex_litSets(B.lit, 0, 0);
-      // flat LOD colour: material with a share of window colour
-      uint16_t win = lerpCol(B.day[0][0], B.lit[0][0], pal.night * L.litPct * 0.01f);
-      B.farCol = lerpCol(B.pal[TS_BASE], win, 0.35f);
-    } else {
-      memset(B.day, 0, sizeof(B.day));
-      memset(B.lit, 0, sizeof(B.lit));
-      B.farCol = B.pal[TS_BASE];
+  const uint32_t look = (uint32_t)L.tex | ((uint32_t)L.colors << 4) | ((uint32_t)face << 6);
+  const uint32_t bkey = look | (frame << 16) | 0x8000u;
+  const uint32_t set = ((look * 0x9E3779B1u) >> 30) * 2;   // 0, 2, 4, 6
+  BasePal* B = &sBaseCache[set];
+  if (B->key != bkey) {
+    BasePal* B2 = &sBaseCache[set + 1];
+    if (B2->key == bkey) B = B2;
+    else {
+      // replace an entry of an older frame first
+      if (((B->key >> 16) & 0xFFFFu) == frame) B = B2;
+      B->key = bkey;
+      const TexColors& C = tex_colors(L.tex, L.colors);
+      tex_buildPalette(B->pal, C, face, 0, 0);
+      const float up = pal.night * 0.55f;
+      if (up > 0.02f) tex_buildUplitPalette(B->base, C, face, 0, 0, up);
+      else memcpy(B->base, B->pal, sizeof(B->base));
+      if (L.windows) tex_windowSets(B->day, face, C.rgb[TS_WINA], L.curtain, 0, 0);
+      else memset(B->day, 0, sizeof(B->day));
     }
   }
   PalSet& P = sFogCache[slot & 3];
-  const uint32_t key = bkey ^ ((uint32_t)(fog32 + 1) << 10);
+  const uint32_t key = (uint32_t)style | ((uint32_t)face << 8) | ((uint32_t)(fog32 + 1) << 10) | (frame << 16);
   if (P.key != key) {
-    fogSet(P, B, fog32);
+    const uint32_t a = (uint32_t)(fog32 > 0 ? fog32 : 0);
+    fogRun(P.pal, B->pal, TS_COUNT, a);
+    fogRun(P.base, B->base, TS_COUNT, a);
+    fogRun(&P.day[0][0], &B->day[0][0], TEX_WIN_STATES * 3, a);
+    fogRun(&P.lit[0][0], &sLit[0][0], 4 * 3, a);
+    // flat LOD colour: material with a share of (lit) window colour
+    if (L.windows) {
+      uint16_t win = lerpCol(P.day[0][0], P.lit[0][0], pal.night * L.litPct * 0.01f);
+      P.farCol = lerpCol(P.pal[TS_BASE], win, 0.35f);
+    } else {
+      P.farCol = P.pal[TS_BASE];
+    }
     P.key = key;
   }
   return P;

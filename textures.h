@@ -168,11 +168,14 @@ static inline const uint16_t* tex_pickWindow(const uint16_t day[TEX_WIN_STATES][
                                              const uint16_t lit[4][3], uint32_t seed, int col,
                                              int floor, int litPct, int night100, int dayState) {
   uint32_t h = seed ^ ((uint32_t)col * 0x9E3779B1u) ^ ((uint32_t)floor * 0x85EBCA77u);
-  h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
-  // warm lights dominate: warm 4/8, white 2/8, cool 1/8, TV 1/8
+  h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 13;
+  // bits: 0..6 lit roll (of 128), 7..12 switch-on threshold, 13..15 light
+  // colour (warm lights dominate: warm 4/8, white 2/8, cool 1/8, TV 1/8),
+  // 16..18 day look
   static const uint8_t LIT_PICK[8] = { 0, 0, 1, 0, 2, 1, 0, 3 };
-  if ((int)(h % 100u) < litPct && night100 > 12 + (int)((h >> 20) % 60u)) return lit[LIT_PICK[(h >> 8) & 7]];
-  return day[dayState >= 0 ? (dayState & 7) : (int)((h >> 12) & 7)];
+  if ((int)(h & 127u) * 100 < litPct * 128 && night100 > 12 + (int)((h >> 7) & 63u))
+    return lit[LIT_PICK[(h >> 13) & 7]];
+  return day[dayState >= 0 ? (dayState & 7) : (int)((h >> 16) & 7)];
 }
 
 // Row-texture palette from a base colour (RGB565, no fog): per slot the

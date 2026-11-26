@@ -1,6 +1,6 @@
 /*
-  ═══════════════════════════════════════════════════════════════
-  ROAD PASS — implementation
+  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  ROAD PASS â€” implementation
 
   Pass 1 (front to back): project every segment boundary once and
   record, per segment, the screen row below which nearer road already
@@ -18,7 +18,7 @@
   textures (asphalt, pavement + kerb, grass, sand, water, rock, snow,
   dirt) through a per-row mip level, so they fade into the flat bands
   with distance instead of shimmering.
-  ═══════════════════════════════════════════════════════════════
+  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 */
 
 #pragma GCC optimize("O2")
@@ -66,6 +66,7 @@ static float sTime = 0;          // seconds (water animation)
 static int   sSunX = 0;          // glitter column
 static float sGlint = 0;         // glitter strength 0..1 (0 = none)
 static uint16_t sGlintCol = 0;
+static uint16_t sSea = 0;        // sea colour: water reflecting the sky near the horizon
 
 // Fog factor LUT over normalised depth (avoids expf per scanline)
 #define FOG_LUT 64
@@ -102,15 +103,15 @@ static inline int rowOf(float y) {
 
 static inline void project(ProjPt& p, float wx, float wy, float wz) { roadProject(p, wx, wy, wz); }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  ROAD ROWS: region specs
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Texture source of a region (0 = flat colour)
 enum TexKind : uint8_t {
   TK_NONE = 0, TK_ROAD, TK_PAVE_L, TK_PAVE_R, TK_GND_L, TK_GND_R, TK_WATER_L, TK_WATER_R,
   TK_STREET_L, TK_STREET_R, TK_GLINT, TK_COUNT };
 
-#define MAXB 48                  // region boundaries per row
+#define MAXB 32                  // region boundaries per row (the widest spec uses 30)
 struct BandSpec {
   int n;                         // boundaries; n + 1 regions
   float u[MAXB];                 // boundary offsets in road half-widths (ascending)
@@ -160,17 +161,17 @@ static void sideProfile(SideProfile& P, const Segment& seg, int sIdx, int side, 
       const uint16_t sand = pal.ground[MAT_SAND][0];
       prof(P, 1.0f + RW, rumble);
       prof(P, BEACH_WATER_X - 0.22f + wash, sand, kGnd);
-      prof(P, BEACH_WATER_X + wash, lerpCol(sand, pal.ground[MAT_WATER][0], 0.30f));
-      prof(P, BEACH_WATER_X + 0.06f + wash * 1.3f, lerpCol(pal.ground[MAT_WATER][0], COL_WHITE, 0.62f), TK_NONE, true);
-      prof(P, 99.0f, pal.ground[MAT_WATER][0], kWater, true);
+      prof(P, BEACH_WATER_X + wash, lerpCol(sand, sSea, 0.30f));
+      prof(P, BEACH_WATER_X + 0.06f + wash * 1.3f, lerpCol(sSea, COL_WHITE, 0.62f), TK_NONE, true);
+      prof(P, 99.0f, sSea, kWater, true);
       break;
     }
     case MAT_WATER:      // narrow sea-wall top, foam at its foot, then water
       prof(P, 1.0f + RW, rumble);
       prof(P, SEAWALL_X, pal.ground[MAT_SIDEWALK][0]);
       prof(P, SEAWALL_X + 0.03f, darkenCol(pal.ground[MAT_SIDEWALK][1], 0.55f));
-      prof(P, SEAWALL_X + 0.07f + wash * 0.5f, lerpCol(pal.ground[MAT_WATER][0], COL_WHITE, 0.55f), TK_NONE, true);
-      prof(P, 99.0f, pal.ground[MAT_WATER][0], kWater, true);
+      prof(P, SEAWALL_X + 0.07f + wash * 0.5f, lerpCol(sSea, COL_WHITE, 0.55f), TK_NONE, true);
+      prof(P, 99.0f, sSea, kWater, true);
       break;
     default:
       prof(P, 1.0f + RW, rumble);
@@ -237,9 +238,9 @@ static void buildSpec(BandSpec& S, const Segment& seg, int sIdx, int variant) {
   for (int i = 1; i < R.n; i++) addB(S, R.u[i - 1], R.c[i], R.k[i], R.sea[i]);
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  ROAD ROWS: texture sources
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 struct KindSrc {
   const RowTex* T;
   float K;              // texels per road half-width
@@ -312,9 +313,9 @@ static void setupSegTex(SegTex& st, const Segment& seg, int sIdx) {
     int m = st.mat[s] < MAT_COUNT ? st.mat[s] : 0;
     bool flatBand = (m == MAT_SAND || m == MAT_SNOW || m == MAT_WATER);
     st.base[TK_GND_L + s] = pal.ground[m][flatBand ? 0 : k];
-    st.base[TK_WATER_L + s] = pal.ground[MAT_WATER][0];
+    st.base[TK_WATER_L + s] = sSea;
   }
-  st.base[TK_GLINT] = pal.ground[MAT_WATER][0];
+  st.base[TK_GLINT] = sSea;
   // road details per 4-segment texture period: patches, seams, cracks, oil
   uint32_t h = hash32((uint32_t)(sIdx >> 2) * 0x9E3779B1u + 0xA5u);
   st.asphaltShow = (1u << TS_DARK) | (1u << TS_SHADE) | (1u << TS_BASE) | (1u << TS_LIGHT) | (1u << TS_TRIM);
@@ -365,7 +366,10 @@ static void drawBand(const SegView& s, int n, const Segment& seg, int sIdx) {
   if (dy < 1e-3f) return;
 
   const bool tun = seg.isTunnel();
-  const bool start = (seg.flags & SEGF_START) != 0;
+  // the chequered line starts at the near edge of the SEGF_START segment
+  // and covers it and the next one: 4 rows of half a segment
+  const bool start0 = (seg.flags & SEGF_START) != 0;
+  const bool start = start0 || (segAt(sIdx - 1).flags & SEGF_START) != 0;
   const bool stop = !(seg.flags & SEGF_CROSSWALK) && (segAt(sIdx + 1).flags & SEGF_CROSSWALK) && !tun;
   static BandSpec spec[SPEC_COUNT];
   buildSpec(spec[SPEC_NORMAL], seg, sIdx, SPEC_NORMAL);
@@ -408,7 +412,7 @@ static void drawBand(const SegView& s, int n, const Segment& seg, int sIdx) {
     if (tun && a > 28) a = 28;
     const float zLoc = z - zNear;                    // 0 .. SEG_LEN from the near edge
     int si = SPEC_NORMAL;
-    if (start) si = ((int)(zLoc * (3.0f / SEG_LEN)) & 1) ? SPEC_CHECK_B : SPEC_CHECK_A;
+    if (start) si = ((int)((zLoc + (start0 ? 0.0f : SEG_LEN)) * (2.0f / SEG_LEN)) & 1) ? SPEC_CHECK_B : SPEC_CHECK_A;
     else if (stop && zLoc > SEG_LEN * 0.50f && zLoc < SEG_LEN * 0.78f) si = SPEC_STOP;
     const BandSpec& S = spec[si];
     const bool rowTex = texOn && z < TEX_MAX_Z && hw > 6.0f;
@@ -505,7 +509,7 @@ static void drawFarGround(int groundEnd, int lastValid, int baseIdx) {
       sea[side] = !fs.isTunnel() && (m == MAT_SAND || m == MAT_WATER);
     }
   }
-  const uint16_t water = pal.ground[MAT_WATER][0];
+  const uint16_t water = sSea;
   const uint16_t seaFar = lerpCol(water, pal.fog, 0.58f);
   const uint16_t seaHor = lerpCol(water, pal.skyHorizon, 0.72f);
   for (int y = horizon; y < groundEnd; y++) {
@@ -530,9 +534,9 @@ static void drawFarGround(int groundEnd, int lastValid, int baseIdx) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  TUNNEL
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 static inline float ceilY(const ProjPt& p, float worldY) {
   return SCR_CY - p.scale * (worldY + TUNNEL_H - roadCam.camY) * SCR_CY;
 }
@@ -668,9 +672,19 @@ static void drawPortal(const SegView& s, int sIdx) {
       if (yc > y0) gfx_texColumn(x, y0, yc, col, (uint32_t)(v0 * sclv), (int32_t)(tpp * sclv),
                                  (uint32_t)((T.cap >> l0) - 1), P);
       const float B = (float)T.body;
-      for (int k = 0; k < 64; k++) {
+      const int yBody = imax(y0, yc);
+      if (city) {   // concrete panels: one wrapped call
+        float v1 = (yBody + 0.5f - top) * tpp - (float)T.cap;
+        if (v1 < 0) v1 = 0;
+        gfx_texColumn(x, yBody, y1, col + (T.cap >> l0), (uint32_t)(v1 * sclv), (int32_t)(tpp * sclv),
+                      (uint32_t)((T.body >> l0) - 1), P);
+        continue;
+      }
+      // only the tile rows this column shows
+      const int kFirst = imax(0, (int)(((yBody + 0.5f - top) * tpp - (float)T.cap) / B));
+      for (int k = kFirst; k < kFirst + 64; k++) {
         const float w0 = (float)T.cap + B * (float)k;
-        const int ya = imax(imax(y0, yc), rowOf(top + w0 * ppt));
+        const int ya = imax(yBody, rowOf(top + w0 * ppt));
         const int yb = imin(y1, rowOf(top + (w0 + B) * ppt));
         if (ya >= y1) break;
         if (yb <= ya) continue;
@@ -707,9 +721,9 @@ static void drawPortal(const SegView& s, int sIdx) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  ROADSIDE: lamps, guard rails, start gantry
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Street lamp on one side of the road, with its light at night.
 static void drawLamp(const ProjPt& p, int side, float fog) {
   float sc = p.scale;
@@ -860,9 +874,9 @@ static void drawGantry(const ProjPt& p, float fog) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  MAIN PASS
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 void drawRoad(float position, float playerX, float playerZdist, float cameraDepth) {
   if (!sFogInit) initFog();
   if (segCount <= 0) return;
@@ -879,6 +893,7 @@ void drawRoad(float position, float playerX, float playerZdist, float cameraDept
     sGlint = (sSunX > -40 && sSunX < SCR_W + 40) ? 0.30f + 0.70f * low : 0.0f;
     if (pal.night > 0.6f) sGlint *= 0.6f;
     sGlintCol = lerpCol(pal.sunGlow, pal.sun, 0.5f);
+    sSea = lerpCol(pal.ground[MAT_WATER][0], pal.skyHorizon, 0.26f);
   }
 
   int baseIdx = findSegIdx(position);
