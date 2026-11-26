@@ -237,8 +237,8 @@ layers column by column without overdraw, then the horizon haze.
 
 | | Core | Themes |
 | --- | --- | --- |
-| XIAO flash / static RAM | 442,969 / 57,136 B | 472,589 / **53,680 B** |
-| Dev board flash / static RAM | 472,277 / 57,568 B | 501,745 / **54,112 B** |
+| XIAO flash / static RAM | 442,969 / 57,136 B | 472,665 / **53,680 B** |
+| Dev board flash / static RAM | 472,277 / 57,568 B | 501,821 / **54,112 B** |
 
 Static RAM went **down** by 3,456 B: the background maps (4,480 B) and the
 build-time tables (1,796 B: the working section list, headings, minimap
