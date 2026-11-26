@@ -63,6 +63,9 @@ static int ladderWindow(int v) {
 
 static void adcTask(void*) {
   int lastWin = 0;
+  // at least one tick: with a 100 Hz tick pdMS_TO_TICKS(4) is 0 and the task
+  // would spin on core 0 and starve its idle task (watchdog)
+  const TickType_t period = pdMS_TO_TICKS(4) > 0 ? pdMS_TO_TICKS(4) : 1;
   for (;;) {
     int x = analogRead(PIN_STICK_X) + analogRead(PIN_STICK_X);
     int y = analogRead(PIN_STICK_Y) + analogRead(PIN_STICK_Y);
@@ -71,7 +74,7 @@ static void adcTask(void*) {
     sRawY = y >> 1;
     if (w == lastWin) sLadWin = w;
     lastWin = w;
-    vTaskDelay(pdMS_TO_TICKS(4));
+    vTaskDelay(period);
   }
 }
 

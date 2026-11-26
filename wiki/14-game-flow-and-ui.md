@@ -302,9 +302,13 @@ shared; relative numbers only):
 
 | Item | Core | UI phase |
 | --- | --- | --- |
-| `drawHUD()` per frame | 42–68 µs (8–13 % of a race frame) | 40–53 µs (8–11 %) |
-| pause, host loop per frame | 1.22 ms (re-renders the race) | 0.26 ms (PSRAM snapshot copy) |
-| title, host loop per frame | 0.37 ms | 0.66 ms (neon floor, logo) |
+| `drawHUD()` per frame (city / coast / alpine) | 41.7 / 45.5 / 41.7 µs (9–13 % of a race frame) | 38.7 / 39.5 / 37.3 µs (8–11 %) |
+| pause, host loop per frame | 1.71 ms (re-renders the race) | 0.20 ms (PSRAM snapshot copy) |
+| title, host loop per frame | 0.37–0.55 ms | 0.58–0.66 ms (neon floor, logo) |
+
+(`drawHUD` is timed alone by a small benchmark linked against both trees;
+whole-frame host loops of the races vary ±40 % from run to run on the shared
+machine and show no difference beyond that noise.)
 
 The first version of the new HUD cost ~100 µs: a gprof run showed 44 % in
 generic alpha blends of the panels and 34 % in text spans going through
