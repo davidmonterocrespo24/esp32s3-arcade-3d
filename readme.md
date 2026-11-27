@@ -73,6 +73,23 @@ Two boards are supported; pick one in `board.h` (`BOARD`).
 
 **Original dev board** — ESP32-S3, ILI9341 on SCK=12, MOSI=11, MISO=13, CS=10, DC=9, RST=8, backlight GPIO39, buttons GPIO17 (left) / GPIO16 (right).
 
+### Building the handheld
+
+<table>
+  <tr>
+    <td><img src="img/handheld-front.webp" alt="The handheld from the front"></td>
+    <td><img src="img/handheld-back.webp" alt="The handheld from the back: the wiring"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Front</b>: the XIAO ESP32-S3 Sense, the ILI9341 panel, the stick and the buttons on a 70×90 mm perfboard (the Sense's camera module is unplugged, beside it)</td>
+    <td align="center"><b>Back</b>: the point-to-point wiring under the panel</td>
+  </tr>
+</table>
+
+**Wiring** (part drawings from [Velxio](https://velxio.dev)):
+
+![Wiring of the ESP32-S3 handheld](img/handheld-wiring.svg)
+
 ### Building for the hardware (Arduino IDE)
 
 1. Board: **XIAO_ESP32S3** (or *ESP32S3 Dev Module* for the dev board), Arduino-ESP32 core 4.0.0 (compile-verified)
