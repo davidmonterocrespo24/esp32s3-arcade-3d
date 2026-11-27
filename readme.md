@@ -9,9 +9,18 @@ emulator and a headless renderer).
 
 ## On the real handheld
 
-![ARCADE 3D running on the ESP32-S3 handheld](img/arcade-3d-handheld.gif)
+<table>
+  <tr>
+    <td><img src="img/arcade-3d-handheld.gif" alt="ARCADE 3D on the handheld: the start lights and the race in Neon City"></td>
+    <td><img src="img/arcade-3d-handheld-beach.gif" alt="ARCADE 3D on the handheld: the coast road of Sunset Coast"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Neon City</b>: the start lights and the race</td>
+    <td align="center"><b>Sunset Coast</b>: the coast road</td>
+  </tr>
+</table>
 
-Filmed on the handheld: XIAO ESP32-S3 Sense, an ILI9341 panel, a stick and buttons. It shows the menu, the start lights, a race against the rivals, a crash, the results and a second circuit. Watch the [full video (2:48, MP4)](img/arcade-3d-handheld.mp4).
+Filmed on the handheld: XIAO ESP32-S3 Sense, an ILI9341 panel, a stick and buttons. The video shows the menu, the start lights, a race against the rivals, a crash, the results and a second circuit. Watch the [full video (2:48, MP4)](img/arcade-3d-handheld.mp4).
 
 ---
 
@@ -32,12 +41,6 @@ Real frames from the game (headless PC build, the same pixels the panel receives
 ![Alpine Pass](wiki/img/circuit-alpine-pass.png)
 
 ![Title, circuit select, results, champion](wiki/img/game-screens.png)
-
-The hardware (the handheld also runs the owner's MGS and SOTN ports) and a video of the original version:
-
-<img src="img/hardesp32.png" alt="ESP32 Hardware" >
-
-![Original version](img/game.gif)
 
 ---
 
