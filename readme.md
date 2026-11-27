@@ -5,6 +5,13 @@ three circuits, five rivals, a Grand Prix, a countdown with start lights, proced
 turns into night while you race. The same source compiles for the ESP32 hardware and for the PC (a Raylib
 emulator and a headless renderer).
 
+**[Play it in the browser on Velxio](https://velxio.dev/example/xiao-arcade-3d)**, no hardware needed: the
+simulator compiles this code for the XIAO ESP32-S3 and runs it with the handheld's circuit.
+
+[![ARCADE 3D running in the Velxio simulator](img/arcade-3d-velxio.webp)](https://velxio.dev/example/xiao-arcade-3d)
+
+*ARCADE 3D in Velxio: the code, the handheld's circuit, and the game racing on the simulated ILI9341 panel.*
+
 ---
 
 ## On the real handheld
