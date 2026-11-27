@@ -34,6 +34,8 @@ struct CarView {
   float ppu;             // pixels per model unit at the anchor
   float camDist;         // eye -> anchor distance in model units
   float yaw, pitch, roll;
+  float wheelSteer = 0;  // front wheels against the body (radians, + = right)
+  float bodyRoll = 0;    // body lean on its springs (radians, + leans right)
   float fog;             // 0..1 towards the fog colour (black in tunnels)
   float flame;           // turbo flame strength 0..1
   uint16_t paint;        // RGB565, 0 = texture paint

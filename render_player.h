@@ -25,6 +25,8 @@ struct CarRender {
   bool  lights;          // tail lights on
   bool  brake;           // brake lights (brighter)
   bool  shadow;          // draw the contact shadow
+  float wheelSteer = 0;  // front wheels turned against the body (radians, + = right)
+  float bodyRoll = 0;    // body lean on its springs (radians, + leans right); the wheels stay upright
 };
 
 // Viewpoint the player's car is drawn from (rivals near the camera use it too)
@@ -48,6 +50,13 @@ void drawPlayerCar(float timeSec);
 // (bounce excluded). Rivals near the player use the same "car camera".
 #define PLAYER_ANCHOR_Y   (SCR_H - 13)
 #define PLAYER_STEER_PX   6.0f        // anchor x shift per unit of steerVisual
+
+// Steering look: the front wheels turn and the body leans out of the turn on
+// soft springs (it lags the steering and overshoots a little on release).
+#define CAR_WHEEL_STEER    0.45f      // front-wheel angle at full steering (radians)
+#define CAR_BODY_ROLL      0.08f      // body lean at full steering and full speed (radians)
+#define BODY_ROLL_FREQ     8.0f       // suspension natural frequency (rad/s)
+#define BODY_ROLL_DAMPING  0.4f       // suspension damping ratio (< 1 overshoots)
 
 // Level of detail for renderCarLod (render_cars picks it with hysteresis)
 enum CarLod : uint8_t {

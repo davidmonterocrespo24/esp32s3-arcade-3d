@@ -171,6 +171,10 @@ static bool computeView(int i, float base, const RoadPt& pp, CarSlot& c) {
   v.pitch = lerpF(rcPitch, ccPitch, w);
   v.yaw = lerpF(rcYaw, ccYaw, w);
   v.roll = 0;
+  // front wheels into the curve and the lane change; the body leans out of it
+  const float steer = clampF(R.yaw * 1.5f + segments[findSegIdx(R.z)].curve * 0.12f, -1.0f, 1.0f);
+  v.wheelSteer = steer * CAR_WHEEL_STEER;
+  v.bodyRoll = -steer * CAR_BODY_ROLL * clampF(R.speed / maxSpeed, 0.0f, 1.0f);
   if (v.ppu <= 0.05f || v.ppu > 90.0f) return false;                // guard: absurd sizes
 
   // ---- screen extent; cull before any vertex is transformed ----

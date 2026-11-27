@@ -76,10 +76,67 @@ static float    sDepth[car2_tri_count];   // their depth keys
 static uint8_t  sBucket[car2_tri_count];
 static uint16_t sPaintLUT[64];
 
+// Mesh parts, each with its own transform: the front wheels steer, the body
+// leans on its springs, the wheels stay upright on the road.
+enum : uint8_t { PART_BODY = 0, PART_REAR_WHEELS, PART_FRONT_LEFT, PART_FRONT_RIGHT, NUM_PARTS };
+static uint8_t sPart[car2_vert_count];              // part of every vertex (found at boot)
+static float   sWheelX[NUM_PARTS], sWheelZ[NUM_PARTS];  // steering axis of each front wheel
+static const float ROLL_CENTER_Y = 0.55f;           // the body leans about this height (axles ~0.43)
+
 // Rasterizer (below), forward declared for the boot IRAM check. No HOT here:
 // IRAM_ATTR names a unique section per use, so it goes on the definition only.
 struct RV;
 static void rasterTri(const RV* p0, const RV* p1, const RV* p2, bool usePaint);
+
+static uint16_t ufFind(uint16_t* r, uint16_t a) {
+  while (r[a] != a) { r[a] = r[r[a]]; a = r[a]; }
+  return a;
+}
+
+// The four wheels are separate pieces of the mesh (no vertex shared with the
+// body). Find them by connectivity: vertices at the same position are one
+// point (the normal crease splits them) and a triangle joins its corners.
+// If none is found every vertex stays PART_BODY and the car is drawn rigid.
+static void findWheels() {
+  uint16_t root[car2_vert_count];    // boot-time scratch on the stack (~0.9 KB)
+  for (int i = 0; i < car2_vert_count; i++) root[i] = (uint16_t)i;
+  for (int i = 0; i < car2_vert_count; i++) {
+    const Car2Vertex& a = car2_verts[i];
+    for (int j = 0; j < i; j++) {
+      const Car2Vertex& b = car2_verts[j];
+      if (a.x == b.x && a.y == b.y && a.z == b.z) { root[ufFind(root, i)] = ufFind(root, j); break; }
+    }
+  }
+  for (int t = 0; t < car2_tri_count; t++) {
+    uint16_t a = ufFind(root, car2_indices[t * 3]);
+    root[ufFind(root, car2_indices[t * 3 + 1])] = a;
+    root[ufFind(root, car2_indices[t * 3 + 2])] = a;
+  }
+  for (int i = 0; i < car2_vert_count; i++) root[i] = ufFind(root, i);
+
+  int wheels = 0;
+  for (int c = 0; c < car2_vert_count; c++) {
+    if (root[c] != c) continue;
+    int n = 0;
+    float x0 = 1e9f, x1 = -1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+    for (int i = 0; i < car2_vert_count; i++) {
+      if (root[i] != c) continue;
+      const Car2Vertex& v = car2_verts[i];
+      n++;
+      x0 = fminF(x0, v.x); x1 = fmaxF(x1, v.x); y1 = fmaxF(y1, v.y);
+      z0 = fminF(z0, v.z); z1 = fmaxF(z1, v.z);
+    }
+    if (n > 64 || y1 > 1.0f) continue;      // the body, or a small piece up high (mirrors)
+    float cx = (x0 + x1) * 0.5f, cz = (z0 + z1) * 0.5f;
+    uint8_t part = cz < 0 ? PART_REAR_WHEELS : (cx < 0 ? PART_FRONT_LEFT : PART_FRONT_RIGHT);
+    for (int i = 0; i < car2_vert_count; i++)
+      if (root[i] == c) sPart[i] = part;
+    sWheelX[part] = cx;
+    sWheelZ[part] = cz;
+    wheels++;
+  }
+  plat_log("car: %d wheels found in the mesh\n", wheels);
+}
 
 static size_t internalFree() {
 #if PLATFORM_ESP32
@@ -128,6 +185,7 @@ void initCarRenderer() {
   plat_log("car: texture %dx%d as %d-colour indices (%u B) in %s%s\n", TEX_W, TEX_H, nPal,
            (unsigned)bytes, internal ? "internal SRAM" : "PSRAM", inexact ? " (approximated)" : "");
   plat_log_iram("rasterTri", (const void*)rasterTri);
+  findWheels();
 
   // ---- mesh: copy to internal RAM only if a comfortable reserve remains ----
   const size_t vb = sizeof(Car2Vertex) * car2_vert_count;
@@ -269,28 +327,25 @@ static void HOT rasterTri(const RV* p0, const RV* p1, const RV* p2, bool usePain
 // ═══════════════════════════════════════════════════════════════
 struct Mat3 { float m[9]; };
 
+static Mat3 matMul(const Mat3& A, const Mat3& B) {
+  Mat3 r;
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      r.m[i * 3 + j] = A.m[i * 3] * B.m[j] + A.m[i * 3 + 1] * B.m[3 + j] + A.m[i * 3 + 2] * B.m[6 + j];
+  return r;
+}
+
 static Mat3 makeRotation(float yaw, float pitch, float roll) {
   // R = Rx(pitch) * Ry(yaw) * Rz(roll). Camera space: x right, y up, z away.
   float cy = cosf(yaw), sy = sinf(yaw), cp = cosf(pitch), sp = sinf(pitch);
   float cr = cosf(roll), sr = sinf(roll);
   // Rz(roll): leans the roof towards +x for roll > 0
-  float a[9] = { cr, sr, 0, -sr, cr, 0, 0, 0, 1 };
+  Mat3 a = { { cr, sr, 0, -sr, cr, 0, 0, 0, 1 } };
   // Ry(yaw): nose (+z) towards +x for yaw > 0
-  float b[9] = { cy, 0, sy, 0, 1, 0, -sy, 0, cy };
+  Mat3 b = { { cy, 0, sy, 0, 1, 0, -sy, 0, cy } };
   // Rx(pitch): camera looks down -> far points move up the screen
-  float c[9] = { 1, 0, 0, 0, cp, sp, 0, -sp, cp };
-  float ba[9], r[9];
-  for (int i = 0; i < 3; i++)
-    for (int j = 0; j < 3; j++) {
-      ba[i * 3 + j] = b[i * 3 + 0] * a[0 * 3 + j] + b[i * 3 + 1] * a[1 * 3 + j] + b[i * 3 + 2] * a[2 * 3 + j];
-    }
-  for (int i = 0; i < 3; i++)
-    for (int j = 0; j < 3; j++) {
-      r[i * 3 + j] = c[i * 3 + 0] * ba[0 * 3 + j] + c[i * 3 + 1] * ba[1 * 3 + j] + c[i * 3 + 2] * ba[2 * 3 + j];
-    }
-  Mat3 out;
-  memcpy(out.m, r, sizeof(r));
-  return out;
+  Mat3 c = { { 1, 0, 0, 0, cp, sp, 0, -sp, cp } };
+  return matMul(c, matMul(b, a));
 }
 
 static inline void mul(const Mat3& M, float x, float y, float z, float& ox, float& oy, float& oz) {
@@ -299,11 +354,47 @@ static inline void mul(const Mat3& M, float x, float y, float z, float& ox, floa
   oz = M.m[6] * x + M.m[7] * y + M.m[8] * z;
 }
 
-// Project a model-space point (relative to the model centre) to the screen
-static inline bool projectPt(const CarRender& cr, const Mat3& M, float x, float y, float z,
+// Camera-space placement of one mesh part: p = R * v + t for a model vertex v
+struct PartXf { Mat3 R; float t[3]; };
+
+// The part turned by L about the model-space pivot (px, py, pz), then the
+// whole car placed by M: p = M * (L * (v - pivot) + pivot - model centre)
+static PartXf partXf(const Mat3& M, const Mat3& L, float px, float py, float pz) {
+  PartXf X;
+  X.R = matMul(M, L);
+  float lx, ly, lz;
+  mul(L, px, py, pz, lx, ly, lz);
+  mul(M, px - lx, py - ly, pz - lz - MODEL_CZ, X.t[0], X.t[1], X.t[2]);
+  return X;
+}
+
+static PartXf bodyXf(const CarRender& cr, const Mat3& M) {
+  return partXf(M, makeRotation(0, 0, cr.bodyRoll), 0, ROLL_CENTER_Y, 0);
+}
+
+// Wheels and the ground stay level; only the body leans
+static PartXf chassisXf(const Mat3& M) {
+  return partXf(M, makeRotation(0, 0, 0), 0, 0, 0);
+}
+
+static void partTransforms(const CarRender& cr, const Mat3& M, PartXf xf[NUM_PARTS]) {
+  xf[PART_BODY] = bodyXf(cr, M);
+  xf[PART_REAR_WHEELS] = chassisXf(M);
+  const Mat3 S = makeRotation(cr.wheelSteer, 0, 0);
+  for (int p = PART_FRONT_LEFT; p <= PART_FRONT_RIGHT; p++)
+    xf[p] = partXf(M, S, sWheelX[p], 0, sWheelZ[p]);   // about the wheel's vertical axis
+}
+
+static inline void place(const PartXf& X, float x, float y, float z, float& px, float& py, float& pz) {
+  mul(X.R, x, y, z, px, py, pz);
+  px += X.t[0]; py += X.t[1]; pz += X.t[2];
+}
+
+// Project a model-space point of a part to the screen
+static inline bool projectPt(const CarRender& cr, const PartXf& X, float x, float y, float z,
                              float& sx, float& sy) {
   float px, py, pz;
-  mul(M, x, y, z - MODEL_CZ, px, py, pz);
+  place(X, x, y, z, px, py, pz);
   float d = cr.camDist + pz;
   if (d < 0.2f) return false;
   float f = cr.pxPerUnit * cr.camDist / d;
@@ -312,7 +403,7 @@ static inline bool projectPt(const CarRender& cr, const Mat3& M, float x, float 
   return true;
 }
 
-static void drawShadow(const CarRender& cr, const Mat3& M, int rings) {
+static void drawShadow(const CarRender& cr, const PartXf& ground, int rings) {
   static const float RINGS[2][3] = { { 1.75f, 3.75f, 6 }, { 1.35f, 3.25f, 12 } };
   for (int r = 2 - rings; r < 2; r++) {
     float hx = RINGS[r][0], hz = RINGS[r][1];
@@ -323,7 +414,7 @@ static void drawShadow(const CarRender& cr, const Mat3& M, int rings) {
     float xy[16];
     bool ok = true;
     for (int i = 0; i < 8; i++)
-      ok &= projectPt(cr, M, pts[i][0], 0.0f, pts[i][1] + MODEL_CZ, xy[2 * i], xy[2 * i + 1]);
+      ok &= projectPt(cr, ground, pts[i][0], 0.0f, pts[i][1] + MODEL_CZ, xy[2 * i], xy[2 * i + 1]);
     float a = RINGS[r][2] * (1.0f - cr.fog) * (rings == 1 ? 1.4f : 1.0f);
     if (ok) gfx_fillPoly(xy, 8, COL_BLACK, GFX_BLEND, (int)a);
   }
@@ -337,7 +428,9 @@ void renderCarLod(const CarRender& cr, int lod) {
   if (!sTexI || cr.pxPerUnit <= 0 || cr.camDist <= 0.5f) return;
   const bool full = lod == CAR_LOD_FULL;
   Mat3 M = makeRotation(cr.yaw, cr.pitch, cr.roll);
-  if (cr.shadow) drawShadow(cr, M, full ? 2 : 1);
+  PartXf xf[NUM_PARTS];
+  partTransforms(cr, M, xf);
+  if (cr.shadow) drawShadow(cr, xf[PART_REAR_WHEELS], full ? 2 : 1);
 
   // ---- lighting setup (camera space) ----
   float Lx, Ly, Lz, lc[3], am[3];
@@ -367,7 +460,7 @@ void renderCarLod(const CarRender& cr, int lod) {
   for (int i = 0; i < car2_vert_count; i++) {
     const Car2Vertex& v = sVerts[i];
     float px, py, pz;
-    mul(M, v.x, v.y, v.z - MODEL_CZ, px, py, pz);
+    place(xf[sPart[i]], v.x, v.y, v.z, px, py, pz);
     float d = camD + pz;
     VOut& o = sV[i];
     o.depth = d;
@@ -426,7 +519,7 @@ void renderCarLod(const CarRender& cr, int lod) {
     VOut& o = sV[i];
     if (!o.lit) continue;
     float nx, ny, nz;
-    mul(M, sNormals[i * 3] * (1.0f / 127), sNormals[i * 3 + 1] * (1.0f / 127),
+    mul(xf[sPart[i]].R, sNormals[i * 3] * (1.0f / 127), sNormals[i * 3 + 1] * (1.0f / 127),
         sNormals[i * 3 + 2] * (1.0f / 127), nx, ny, nz);
     float diff = nx * Lx + ny * Ly + nz * Lz;
     if (diff < 0) diff = 0;
@@ -497,7 +590,7 @@ void renderCarLod(const CarRender& cr, int lod) {
       float base = cr.brake ? 1.0f : 0.55f;
       for (int s = -1; s <= 1; s += 2) {
         float sx, sy;
-        if (!projectPt(cr, M, 0.85f * s, 1.22f, -3.24f, sx, sy)) continue;
+        if (!projectPt(cr, xf[PART_BODY], 0.85f * s, 1.22f, -3.24f, sx, sy)) continue;
         int r = (int)(cr.pxPerUnit * (cr.brake ? 0.75f : 0.5f));
         if (r < 2) r = 2;
         int strength = (int)(30 * base * (1.0f - cr.fog * 0.6f));
@@ -517,13 +610,14 @@ void renderCarFlame(const CarRender& cr, float strength, float timeSec) {
   float nx, ny, nz;
   mul(M, 0, 0, -1, nx, ny, nz);
   if (nz > 0.25f) return;                 // seen from the front: exhausts hidden
+  const PartXf body = bodyXf(cr, M);
   const float k = strength * (1.0f - cr.fog * 0.7f);
   for (int s = -1; s <= 1; s += 2) {
     float fl = 0.70f + 0.30f * sinf(timeSec * 61.0f + s * 2.1f) * sinf(timeSec * 23.0f + s);
     float len = (0.9f + 0.7f * fl) * strength;          // model units behind the bumper
     float x0, y0, x1, y1;
-    if (!projectPt(cr, M, 0.52f * s, 0.62f, -3.30f, x0, y0)) continue;
-    if (!projectPt(cr, M, 0.52f * s, 0.66f, -3.30f - len, x1, y1)) continue;
+    if (!projectPt(cr, body, 0.52f * s, 0.62f, -3.30f, x0, y0)) continue;
+    if (!projectPt(cr, body, 0.52f * s, 0.66f, -3.30f - len, x1, y1)) continue;
     float r0 = fmaxF(1.5f, cr.pxPerUnit * 0.42f);
     // outer plume (blue), from the tip back to the exhaust
     for (int i = 3; i >= 0; i--) {
@@ -537,7 +631,7 @@ void renderCarFlame(const CarRender& cr, float strength, float timeSec) {
     // its light on the rear bumper (stays on screen for the player's car,
     // whose exhausts sit just below the bottom edge)
     float bx, by;
-    if (projectPt(cr, M, 0.50f * s, 1.00f, -3.30f, bx, by))
+    if (projectPt(cr, body, 0.50f * s, 1.00f, -3.30f, bx, by))
       gfx_glow((int)bx, (int)by, imax(2, (int)(r0 * 1.1f)), rgb(70, 140, 255), (int)(16 * k * (0.8f + 0.2f * fl)));
   }
 }
@@ -547,6 +641,8 @@ void renderCarFlame(const CarRender& cr, float strength, float timeSec) {
 // ═══════════════════════════════════════════════════════════════
 static float sSmoothPitch = 0.0f;
 static float sFlame = 0.0f;
+static float sBodyRoll = 0.0f, sBodyRollVel = 0.0f;   // sprung body lean
+static float sLastTime = -1.0f;
 
 float playerViewSlope() { return sSmoothPitch; }
 
@@ -579,7 +675,17 @@ void drawPlayerCar(float timeSec) {
     cr.yaw += (1.0f - (1.0f - t) * (1.0f - t)) * 2.0f * (float)PI;
   }
   cr.pitch = PLAYER_VIEW_PITCH + sSmoothPitch;
-  cr.roll = -steerVisual * 0.035f - seg.curve * spPct * 0.006f;
+  // The body leans out of the turn on damped springs (lean grows with speed);
+  // the front wheels follow the steering
+  float dt = sLastTime < 0 ? 0.0f : clampF(timeSec - sLastTime, 0.0f, 0.05f);
+  sLastTime = timeSec;
+  float rollTarget = -(steerVisual * CAR_BODY_ROLL + seg.curve * 0.006f) * spPct;
+  const float W = BODY_ROLL_FREQ;
+  sBodyRollVel += ((rollTarget - sBodyRoll) * W * W - 2.0f * BODY_ROLL_DAMPING * W * sBodyRollVel) * dt;
+  sBodyRoll += sBodyRollVel * dt;
+  cr.roll = 0;
+  cr.bodyRoll = sBodyRoll;
+  cr.wheelSteer = steerVisual * CAR_WHEEL_STEER;
   cr.camDist = PLAYER_VIEW_DIST;
   cr.paint = PLAYER_PAINT;
   cr.fog = 0;

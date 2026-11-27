@@ -61,6 +61,8 @@ void drawCarView(const CarView& v, float timeSec) {
   cr.yaw = v.yaw;
   cr.pitch = v.pitch;
   cr.roll = v.roll;
+  cr.wheelSteer = v.wheelSteer;
+  cr.bodyRoll = v.bodyRoll;
   cr.camDist = fmaxF(4.0f, v.camDist);
   cr.paint = v.paint;
   cr.fog = v.tunnel ? fminF(v.fog * 1.4f, 0.9f) : v.fog;
