@@ -1,66 +1,86 @@
-# ESP32 Car Game Emulator (Windows)
+# PC builds of the ESP32 Car Game
 
-This folder contains a Windows wrapper for the ESP32 Car Game, allowing you to run and debug the game on your PC using [Raylib](https://www.raylib.com/).
+The game draws into its own RGB565 software framebuffer (`../gfx.cpp`) on every
+platform, so the PC builds show exactly the pixels the ESP32 sends to the panel.
+Only the frontends differ:
 
-## Prerequisites
+| Target | Command | Needs |
+| ------ | ------- | ----- |
+| `car_game_emu.exe` | `make` | MinGW g++ + [Raylib](https://www.raylib.com/) (`RAYLIB_PATH`, default `C:/raylib`) |
+| `car_game_headless` | `make headless` | any C++17 g++ (Linux/WSL/MinGW) |
 
-1.  **MinGW / G++**: You need a C++ compiler. You can use the one bundled with Raylib or install MinGW-w64.
-2.  **Raylib**: Download and install Raylib for Windows.
-    *   Recommendation: Use the [Raylib Installer](https://github.com/raysan5/raylib/releases) which installs to `C:/raylib`.
+The Makefile compiles every `../*.cpp` (the ESP32-only files are guarded by
+`ARDUINO_ARCH_ESP32` and compile to nothing), so new game files need no change.
 
-## Configuration
+## Emulator controls
 
-Open `Makefile` and check the `RAYLIB_PATH` variable.
-Default is:
-```makefile
-RAYLIB_PATH ?= C:/raylib/raylib
+* **Left / Right**: steer; in menus they change values (difficulty) and
+  cycle the circuit carousel
+* **Up / Down**: move in menus (held: auto-repeat)
+* **Space / Down**: brake
+* **X / Left Shift**: turbo
+* **Enter**: confirm / pause
+* **P**: pause / resume (without confirming a menu item)
+* **Esc / Backspace**: back (close the window to quit)
+* **F12**: screenshot
+
+Save data goes to `car_game_save.bin` next to the executable.
+
+## Headless renderer
+
+```bash
+./car_game_headless <outdir> <frames> [options] [frame numbers to save...]
 ```
-If you installed Raylib elsewhere, update this path or pass it when running make.
 
-## Building
+| Option | Meaning |
+| --- | --- |
+| `--race C` | skip title/menus and go straight to circuit C's grid + countdown |
+| `--nocd` | with `--race` / `--gp`: skip the countdown (GO at frame 1) |
+| `--gp` | start a Grand Prix from the first circuit (auto-confirms results/standings) |
+| `--auto` | the autopilot drives the player car for the whole run |
+| `--diff D` | difficulty 0/1/2 |
+| `--cycle C` | override the day cycle (0 day, 1 sunset, 2 night, 3 dawn) and freeze it |
+| `--pos Z` | teleport the player (camera) to track position Z right after GO |
+| `--in A:B:SPEC` | input from frame A to B; SPEC = comma list of `L`,`R`,`U`,`D`,`steer=V`,`brake`,`turbo`,`start`,`confirm`,`back` |
+| `--dump N` | every N frames print the state, raceTime and z/x/speed/place/lap of every racer |
+| `--every N` | save every Nth frame |
+| `--title` | no automatic presses (the title falls into the demo after 10 s idle) |
+| `--save` | enable save data (`car_game_save.bin` in the current folder) |
+| `--segs F` | at frame F print the 40 segments ahead of the camera |
+| `--steer A:B:V`, `--brake A:B` | older forms of `--in` |
+| `--state NAME[:C]` | jump to a screen before frame 0: `TITLE`, `DEMO`, `MENU`, `SELECT`, `COUNTDOWN`, `RACE`, `PAUSE`, `FINISH`, `RESULTS`, `STANDINGS`, `CHAMPION` on circuit C (for `STANDINGS`: after GP race C). `FINISH`..`CHAMPION` first fast-forward the race(s) with the autopilot, without rendering |
+| `--devkit` | menus react like on the two-button dev board (one button moves on release, confirm = both buttons never moves) |
 
-Open a terminal in this `emulator/` directory and run:
+Without `--race` / `--gp` / `--title` / `--state` the harness walks title →
+menu → QUICK RACE → circuit 0 (presses at frames 30, 50, 60, 80; screen changes
+fade out for 0.2 s, so the countdown starts at frame ~86). Frames are written as
+`frame_NNNN.ppm`; the run ends with the state, the classification (when a race
+ran) and the average host time per frame. It runs on a virtual 30 Hz clock and
+everything is seeded, so runs are reproducible.
 
-```cmd
-mingw32-make
-```
-(Or just `make` if you have it aliased).
+## Tools (`tools/`)
 
-## Running
+| Tool | Use |
+| --- | --- |
+| `python tools/sheet.py <out.png> <scale> a.ppm b.ppm ...` | contact sheet, 2 columns (needs Pillow) |
+| `bash tools/balance.sh` | the autopilot races every circuit at every difficulty; prints its place, time and the winner (targets: EASY P1-P2, NORMAL P2-P4, HARD P4-P6) |
+| `python tools/analyze_dump.py log.txt` | checks a `--dump 1` log (`./car_game_headless out 4700 --race C --auto --dump 1 > log.txt`): overlapping cars, contacts, lateral steps, jitter, overtakes, lap counters |
+| `bash tools/check_circuits.sh` | builds `tools/circuit_dump.cpp` with the game's circuit code, validates every circuit's layout and keep-out rules (`validate_circuits.py`) and checks that a circuit is identical whatever was built before it |
 
-Run the generated executable:
-```cmd
-car_game_emu.exe
-```
+The shell tools run from `emulator/` in WSL / Linux after `make headless`.
 
-## Controls
+## How it works
 
-*   **Left Arrow**: Steer Left (Simulates BTN_LEFT)
-*   **Right Arrow**: Steer Right (Simulates BTN_RIGHT)
-
-## How it Works
-
-*   `Arduino.h/cpp`: Mocks the Arduino API (`millis`, `delay`, `digitalRead`, etc.).
-*   `TFT_eSPI.h/cpp`: Mocks the TFT library using Raylib for rendering.
-*   `car_game_wrapper.cpp`: Includes the original `car_game.ino` file to compile the game logic as part of the C++ application.
-*   `main.cpp`: The Windows entry point that initializes the window and runs the game loop.
+* `Arduino.h/cpp`: Arduino API mock (`millis`, `random`, ...), plus the
+  `platform.h` allocation/logging/save helpers. Headless runs use a virtual clock.
+* `host_io.h/cpp`: `display_present()` copies the frame for the frontend,
+  `input_read()` returns what the frontend set.
+* `car_game_wrapper.cpp`: includes `../car_game.ino` so it compiles as C++.
+* `main.cpp` / `main_headless.cpp`: the two frontends.
 
 ## Troubleshooting
 
-## Troubleshooting
+### "g++: command not found"
 
-## Troubleshooting
-
-### "g++: command not found" or "Make: *** [main.o] Error"
-This means you are missing the C++ compiler.
-
-**Option A: The Easy Way (Installer)**
-1.  Go to [itch.io Raylib](https://raylib.itch.io/raylib) and download the **Windows Installer**.
-2.  Run it and check **"Install w64devkit (MinGW compiler)"**.
-
-**Option B: The Manual Way (w64devkit)**
-1.  Download **w64devkit** from [GitHub](https://github.com/skeeto/w64devkit/releases).
-2.  Extract it to a folder (e.g., `C:\w64devkit`).
-3.  Add `C:\w64devkit\bin` to your **System Environment Variables (PATH)**.
-4.  Restart your terminal.
-
+Install a compiler: the Raylib Windows installer can include **w64devkit**
+(MinGW), or download w64devkit from GitHub and add its `bin` folder to `PATH`.

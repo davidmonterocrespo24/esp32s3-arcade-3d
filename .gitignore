@@ -1,6 +1,11 @@
 .history/*
 emulator/car_game_emu.exe
+emulator/car_game_headless
+emulator/car_game_headless.exe
+emulator/screenshot.png
 *.o
+*.ppm
 .claude/settings.local.json
 emulator/nul
-.claude/settings.local.json
+car_game_save.bin
+emulator/car_game_save.bin

@@ -1,140 +1,26 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  ESP32 Pseudo-3D Racing Game — TFT_eSPI (Double Buffered)
+  ESP32-S3 Pseudo-3D Racing Game — ARCADE 3D
 
-  ESTRUCTURA MODULAR:
-  - config.h       : Constantes y definiciones del hardware
-  - structs.h      : Estructuras de datos (Segment, RenderPt, TrafficCar)
-  - colors.cpp/h   : Gestión de colores y paletas
-  - utils.cpp/h    : Funciones utilitarias matemáticas
-  - track.cpp/h    : Generación de pista y tráfico
-  - rendering.cpp/h: Funciones de dibujo y renderizado
-  - physics.cpp/h  : Física del juego y colisiones
+  The sketch is thin on purpose: game.cpp owns the state machine
+  (title, menus, Grand Prix / quick race, countdown, race, results).
+  See wiki/10-game-architecture.md for the module map.
+
+  Memory map (ESP32-S3, 8 MB octal PSRAM):
+    internal SRAM : framebuffer 150 KB, car texture 32 KB, 2x5 KB DMA
+                    bands, mesh work arrays ~17 KB
+    PSRAM         : 2 x 150 KB scanout snapshots, track segments 48 KB
+    flash         : mesh, texture source, palettes, font
   ═══════════════════════════════════════════════════════════════
 */
 
-#include <SPI.h>
-#include <TFT_eSPI.h>
+#include <Arduino.h>
+#include "game.h"
 
-#include "config.h"
-#include "structs.h"
-#include "colors.h"
-#include "utils.h"
-#include "track.h"
-#include "rendering.h"
-#include "physics.h"
-
-// ═══════════════════════════════════════════════════════════════
-//  VARIABLES DE CONTROL DE TIEMPO Y DÍA/NOCHE
-// ═══════════════════════════════════════════════════════════════
-int  timeOfDay = 0;            // 0=día, 1=atardecer, 2=noche
-long distSinceTimeChange = 0;
-
-// ═══════════════════════════════════════════════════════════════
-//  SETUP
-// ═══════════════════════════════════════════════════════════════
 void setup() {
-  Serial.begin(115200);
-
-  // Configurar pines de botones
-  pinMode(BTN_LEFT,  INPUT_PULLUP);
-  pinMode(BTN_RIGHT, INPUT_PULLUP);
-  randomSeed(analogRead(0));
-
-  // Configurar backlight de la pantalla
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-
-  // Inicializar pantalla TFT
-  tft.begin();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
-
-  // Crear sprite para double buffering en PSRAM (ahorra ~150KB RAM)
-  spr.setColorDepth(16);
-  spr.setAttribute(PSRAM_ENABLE, true); // Habilitar PSRAM antes de crear
-  if (spr.createSprite(SCR_W, SCR_H) == nullptr) {
-    Serial.println("ERROR: Fallo al crear spr principal!");
-  }
-
-  // Inicializar física
-  initPhysics();
-
-  // DEBUG DE PSRAM
-  Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());
-  Serial.print("Free PSRAM:  "); Serial.println(ESP.getFreePsram());
-
-  // Inicializar colores
-  initColors(timeOfDay);
-
-  // ¡NUEVO! Generar montañas parallax en PSRAM
-  initBackground();
-
-  // Construir pista
-  buildTrack();
-
-  // Inicializar tráfico
-  initTraffic(maxSpeed);
-
-  // Mostrar pantalla de inicio con carro rotando (3 segundos)
-  unsigned long startTime = millis();
-  while (millis() - startTime < 3000) {
-    float animTime = (millis() - startTime) * 0.001f; // Convertir a segundos
-    drawStartScreen(animTime);
-    delay(16); // ~60 FPS
-  }
-
-  lastFrameMs = millis();
-  distSinceTimeChange = 0;
+  game_setup();
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  MAIN LOOP
-// ═══════════════════════════════════════════════════════════════
 void loop() {
-  unsigned long now = millis();
-  float dt = (now - lastFrameMs) / 1000.0;
-  lastFrameMs = now;
-  if (dt > 0.1) dt = 0.1; // Limitar delta time
-
-  // Actualizar juego si no está crashed
-  if (!crashed) {
-    handleInput(dt);
-    updatePhysics(dt);
-    checkCollisions();
-
-    // --- MAGIA DEL PARALLAX ---
-    // El fondo se mueve según la curva y velocidad (efecto Horizon Chase)
-    int pSeg = findSegIdx(position + playerZdist);
-    float curveForce = segments[pSeg].curve;
-    // Factor 150.0 controla velocidad de rotación del fondo
-    skyOffset += curveForce * (speed / maxSpeed) * 150.0f * dt;
-  }
-
-  // Renderizar frame en el sprite (buffer)
-  drawSky(position, playerZdist, timeOfDay, skyOffset);
-  drawRoad(position, playerX, playerZdist, cameraDepth, timeOfDay);
-  drawPlayerCar();
-  drawHUD(speed, maxSpeed, currentLapTime, bestLapTime);
-
-  // Mostrar mensaje de crash
-  if (crashed) {
-    drawCrashMessage();
-    if (millis() - crashTimer > 2000) {
-      crashed = false;
-      speed   = 0;
-      playerX = 0;
-    }
-  }
-
-  // Enviar el frame completo a la pantalla (double buffering)
-  spr.pushSprite(0, 0);
-
-  // Cambiar hora del día según distancia recorrida
-  distSinceTimeChange += (int)(speed * dt);
-  if (distSinceTimeChange > 180000) {
-    distSinceTimeChange = 0;
-    timeOfDay = (timeOfDay + 1) % 3;
-    initColors(timeOfDay);
-  }
+  game_loop();
 }

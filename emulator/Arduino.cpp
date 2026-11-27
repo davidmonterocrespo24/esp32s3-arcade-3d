@@ -1,62 +1,91 @@
+// Arduino API + platform helpers for the PC builds. No Raylib in here, so
+// the same file serves the windowed emulator and the headless renderer.
+
 #include <chrono>
 #include <thread>
-#include "raylib.h"
-#include "../config.h"
-#include "SPI.h"
+#include <random>
+#include <stdarg.h>
 #include "Arduino.h"
+#include "../platform.h"
 
-// Global objects
 SerialMock Serial;
-ESPMock ESP;
-SPIClass SPI;
 
-// Chrono for millis
-auto start_time = std::chrono::steady_clock::now();
+bool          g_emuVirtualClock = false;
+unsigned long g_emuNowMs = 0;
+
+static auto start_time = std::chrono::steady_clock::now();
+static std::mt19937 rng(12345);
 
 unsigned long millis() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time).count();
+  if (g_emuVirtualClock) return g_emuNowMs;
+  auto now = std::chrono::steady_clock::now();
+  return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time).count();
+}
+
+unsigned long micros() {
+  if (g_emuVirtualClock) return g_emuNowMs * 1000UL;
+  auto now = std::chrono::steady_clock::now();
+  return (unsigned long)std::chrono::duration_cast<std::chrono::microseconds>(now - start_time).count();
 }
 
 void delay(unsigned long ms) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  if (g_emuVirtualClock) { g_emuNowMs += ms; return; }
+  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
-void randomSeed(long seed) {
-    SetRandomSeed(seed);
+void randomSeed(unsigned long seed) {
+  // Headless runs keep their fixed seed so screenshots are reproducible
+  if (!g_emuVirtualClock) rng.seed((uint32_t)seed);
 }
 
-int random(int max) {
-    if (max == 0) return 0;
-    return GetRandomValue(0, max - 1);
+long random(long howbig) {
+  if (howbig <= 0) return 0;
+  return (long)(rng() % (uint32_t)howbig);
 }
 
-int random(int min, int max) {
-    if (min >= max) return min;
-    return GetRandomValue(min, max - 1);
+long random(long lo, long hi) {
+  if (lo >= hi) return lo;
+  return lo + random(hi - lo);
 }
 
-int analogRead(uint8_t pin) {
-    return 0; // Dummy
+int analogRead(uint8_t) { return 0; }
+void pinMode(uint8_t, uint8_t) {}
+void digitalWrite(uint8_t, uint8_t) {}
+int digitalRead(uint8_t) { return HIGH; }
+
+// ---- platform.h -----------------------------------------------------------
+void* plat_alloc_internal(size_t bytes) { return calloc(1, bytes); }
+void* plat_alloc_psram(size_t bytes) { return calloc(1, bytes); }
+
+void plat_log(const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vprintf(fmt, ap);
+  va_end(ap);
 }
 
-void pinMode(uint8_t pin, uint8_t mode) {
-    // No-op
+void plat_report_memory(const char*) {}
+void plat_init() {}
+void plat_status(float, float, float) {}
+void plat_log_iram(const char*, const void*) {}
+
+bool        g_emuSaveEnabled = true;
+std::string g_emuSavePath = "car_game_save.bin";
+
+bool plat_save(const void* data, size_t n) {
+  if (!g_emuSaveEnabled) return false;
+  FILE* f = fopen(g_emuSavePath.c_str(), "wb");
+  if (!f) return false;
+  bool ok = fwrite(data, 1, n, f) == n;
+  fclose(f);
+  return ok;
 }
 
-void digitalWrite(uint8_t pin, uint8_t val) {
-    // No-op
-}
-
-// Input handling mapping
-// config.h defines BTN_LEFT 17, BTN_RIGHT 16
-// INPUT_PULLUP: LOW is pressed, HIGH is released.
-int digitalRead(uint8_t pin) {
-    if (pin == BTN_LEFT) {
-        return IsKeyDown(KEY_LEFT) ? LOW : HIGH;
-    }
-    if (pin == BTN_RIGHT) {
-        return IsKeyDown(KEY_RIGHT) ? LOW : HIGH;
-    }
-    return HIGH;
+bool plat_load(void* data, size_t n) {
+  if (!g_emuSaveEnabled) return false;
+  FILE* f = fopen(g_emuSavePath.c_str(), "rb");
+  if (!f) return false;
+  bool ok = fread(data, 1, n, f) == n && fgetc(f) == EOF;   // exact size only
+  fclose(f);
+  return ok;
 }

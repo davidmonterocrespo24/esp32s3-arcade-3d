@@ -1,45 +1,35 @@
 /*
   ═══════════════════════════════════════════════════════════════
-  RENDERING AND DRAWING - MAIN MODULE
-  Coordinator of rendering submodules
+  SKY AND PARALLAX BACKGROUND
   ═══════════════════════════════════════════════════════════════
 */
 
 #ifndef RENDERING_H
 #define RENDERING_H
 
-#include <TFT_eSPI.h>
 #include "config.h"
-#include "structs.h"
+#include "gfx.h"
+#include "colors.h"
 
-// Include rendering submodules
-#include "render_player.h"
-#include "render_traffic.h"
-#include "render_road.h"
-#include "render_hud.h"
-
-// ═══════════════════════════════════════════════════════════════
-//  GLOBAL RENDERING VARIABLES
-// ═══════════════════════════════════════════════════════════════
-extern TFT_eSPI tft;
-extern TFT_eSprite spr;
-
-// -- PARALLAX BACKGROUND (Horizon Chase style) --
-extern TFT_eSprite bgSpr;
+// Parallax background scroll (advanced by curves * speed)
 extern float skyOffset;
-extern bool bgCreated;
 
-extern RenderPt rCache[DRAW_DIST];
-extern int16_t  rClip[DRAW_DIST];
+// Seconds of the last drawSky() call: the animation clock of the
+// background and of the scenery sprites (flags, beams, blinking lights).
+extern float bgTime;
 
-// ═══════════════════════════════════════════════════════════════
-//  HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════
+// Generate the background of a circuit theme (Theme in circuits.h):
+// city skyline / sea horizon with islands / mountain ranges, stars and
+// clouds. Deterministic per theme. Call once per circuit (buildCircuit).
+void initBackground(int theme);
 
-// Initialize parallax background with procedural skyline
-void initBackground();
+// Sky gradient, sun/moon, stars, clouds and the background layers of the
+// theme chosen at init, with the current palette.
+void drawSky(float skyOffset, float timeSec);
 
-// Draw a 3D trapezoid (quad) - helper function
-void drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4, uint16_t c);
+// Screen x of the sun / moon centre for a parallax offset (may lie off
+// screen). drawSky draws it there; the road's sun glitter on the sea
+// (render_road) uses the same value, so the two can never drift apart.
+int sky_sunX(float skyOffset);
 
 #endif // RENDERING_H
