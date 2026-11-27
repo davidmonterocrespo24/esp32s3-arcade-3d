@@ -7,6 +7,14 @@ emulator and a headless renderer).
 
 ---
 
+## On the real handheld
+
+![ARCADE 3D running on the ESP32-S3 handheld](img/arcade-3d-handheld.gif)
+
+Filmed on the handheld: XIAO ESP32-S3 Sense, an ILI9341 panel, a stick and buttons. It shows the menu, the start lights, a race against the rivals, a crash, the results and a second circuit. Watch the [full video (2:48, MP4)](img/arcade-3d-handheld.mp4).
+
+---
+
 ## Screenshots
 
 Real frames from the game (headless PC build, the same pixels the panel receives):
