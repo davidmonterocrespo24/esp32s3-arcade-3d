@@ -3,3 +3,5 @@ emulator/car_game_emu.exe
 *.o
 .claude/settings.local.json
 emulator/nul
+nul
+__pycache__/
